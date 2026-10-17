@@ -2,7 +2,12 @@
 
 Turn the 3D model behind a [floor3d-card](https://github.com/adizanni/floor3d-card), [floor3dpro-card](https://github.com/levonisyas/floor3dpro-card) or [floor3dx-card](https://github.com/FortranFour/floor3dx-card) into a **fast, tappable floor plan** with simple room controls — for wall tablets, phones, guests and anyone who doesn't need the full 3D experience.
 
+Built-in sample:
 ![Card](docs/card.png)
+
+Actual card created from existing floor3dx-card:
+<img width="1260" height="737" alt="Screenshot 2026-10-16 191650" src="https://github.com/user-attachments/assets/c1a57fe4-2707-4400-99bc-a1c4d8619cdf" />
+
 
 - **Static and light.** The card shows a pre-rendered isometric picture of your model. Tablets and phones download one ~26 KB module and two images (typically 100–200 KB); no 3D runs on them.
 - **Tap a floor, get its controls.** Each room's floor is the button. The selected room is washed in your theme color, rooms with something on glow amber, and a mouse hover names the room. Pins stay hidden so the picture stays clean (a **Labels** toggle shows them).
