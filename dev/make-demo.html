@@ -1,0 +1,49 @@
+<!doctype html><meta charset="utf-8">
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+<script type="module">
+// A small, original demo home in the shape of a Sweet Home 3D export: room_N_1 floors,
+// room_N_2 ceilings, walls with door gaps, furniture and named fixtures (meters).
+import * as THREE from "three";
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+const scene = new THREE.Scene();
+const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
+const box = (name, x, y, z, w, h, d, color = 0xb0b0b0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color)); m.position.set(x + w / 2, y + h / 2, z + d / 2); m.name = name; scene.add(m); return m; };
+const H = 2.6, T = 0.12;
+const rooms = [["Kitchen", 0, 0, 5, 4], ["Living", 5, 0, 7, 5], ["Bedroom", 0, 4, 5, 5], ["Bath", 5, 5, 3, 4], ["Office", 8, 5, 4, 4], ["Garage", 14, 0, 6, 7]];
+rooms.forEach(([n, x, z, w, d], i) => {
+  const f = box(`room_${i}_1`, x, 0, z, w, 0.02, d, 0xd8d8d8);
+  box(`room_${i}_2`, x, H, z, w, 0.02, d, 0xeeeeee);
+});
+let wid = 0;
+const wall = (x1, z1, x2, z2, gaps = []) => {   // axis-aligned wall with door gaps [from, to] along its length
+  const len = Math.hypot(x2 - x1, z2 - z1), horiz = z1 === z2;
+  const cuts = [0, ...gaps.flat(), len];
+  for (let k = 0; k < cuts.length; k += 2) {
+    const a = cuts[k], b = cuts[k + 1]; if (b - a < 0.05) continue;
+    if (horiz) box(`wall_${wid++}`, Math.min(x1, x2) + a, 0, z1 - T / 2, b - a, H, T, 0xc8c8c8);
+    else box(`wall_${wid++}`, x1 - T / 2, 0, Math.min(z1, z2) + a, T, H, b - a, 0xc8c8c8);
+  }
+};
+// house shell 12 x 9, interior walls with doors
+wall(0, 0, 12, 0, [[7, 8.2]]); wall(0, 9, 12, 9); wall(0, 0, 0, 9); wall(12, 0, 12, 9);
+wall(5, 0, 5, 5, [[1.5, 2.5]]); wall(0, 4, 5, 4, [[3.5, 4.5]]); wall(5, 5, 12, 5, [[0.8, 1.7], [4, 5]]); wall(8, 5, 8, 9); wall(5, 4, 5, 9, [[0.3, 0.9]]);
+// garage
+wall(14, 0, 20, 0, [[0.5, 5.5]]); wall(14, 7, 20, 7); wall(14, 0, 14, 7, [[5, 6]]); wall(20, 0, 20, 7);
+box("garage_door", 14.5, 0, -0.05, 5, 2.2, 0.06, 0xa9a9a9);
+// furniture & fixtures (names are what the floor3d config binds to)
+box("kitchen_counter", 0.2, 0, 0.2, 4.6, 0.9, 0.6, 0x9a9a9a); box("kitchen_island", 1.5, 0, 1.8, 2, 0.9, 1, 0xa0a0a0);
+box("coffee_maker", 3.6, 0.9, 0.3, 0.3, 0.35, 0.3, 0x707070);
+box("lamp_kitchen", 2.3, 2.3, 2.1, 0.4, 0.15, 0.4, 0xf0f0f0);
+box("sofa", 6, 0, 3.6, 3, 0.8, 0.9, 0x9e9e9e); box("coffee_table", 6.8, 0, 2.2, 1.4, 0.4, 0.7, 0x8c8c8c);
+box("tv", 6.6, 0.6, 0.15, 1.8, 1, 0.08, 0x404040); box("lamp_living", 10.8, 0, 3.8, 0.4, 1.6, 0.4, 0xe0e0e0);
+box("thermostat", 11.85, 1.4, 2.5, 0.06, 0.12, 0.1, 0xffffff);
+box("bed", 0.6, 0, 5.2, 2, 0.6, 2.2, 0xb8b8b8); box("lamp_bedside", 2.8, 0.5, 5.3, 0.3, 0.45, 0.3, 0xe0e0e0);
+box("fan_bedroom", 1.4, 2.2, 6.2, 1.2, 0.08, 1.2, 0xbdbdbd);
+box("bathtub", 5.3, 0, 7.1, 1.7, 0.6, 1.7, 0xe8e8e8); box("vanity", 7.1, 0, 5.3, 0.7, 0.85, 1.2, 0x9a9a9a);
+box("desk", 9.2, 0, 7.6, 2, 0.75, 0.9, 0x8f8f8f); box("lamp_desk", 10.8, 0.75, 7.8, 0.25, 0.4, 0.25, 0xe0e0e0);
+box("front_door", 7, 0, -0.04, 1.2, 2.1, 0.05, 0x8a7a6a);
+box("car", 15.5, 0, 1.2, 1.9, 1.4, 4.4, 0x9a9a9a); box("workbench", 17.6, 0, 6.2, 2.2, 0.9, 0.7, 0x8f8f8f);
+box("lamp_garage", 16.6, 2.4, 3, 0.8, 0.1, 0.2, 0xf0f0f0);
+scene.updateMatrixWorld(true);
+new GLTFExporter().parse(scene, (glb) => { window.__glb = Array.from(new Uint8Array(glb)); }, (e) => { window.__err = String(e); }, { binary: true });
+</script>

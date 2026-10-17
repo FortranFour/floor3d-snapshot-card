@@ -1,0 +1,141 @@
+{
+ "views": [
+  {
+   "title": "3D Home",
+   "cards": [
+    {
+     "type": "custom:floor3d-card",
+     "path": "/dev/demo/",
+     "objfile": "demo-home.glb",
+     "entities": [
+      {
+       "entity": "input_button.floor3d_kitchen",
+       "object_id": "room_0_1",
+       "type3d": "camera"
+      },
+      {
+       "entity": "input_button.floor3d_living_room",
+       "object_id": "room_1_1",
+       "type3d": "camera"
+      },
+      {
+       "entity": "input_button.floor3d_bedroom",
+       "object_id": "room_2_1",
+       "type3d": "camera"
+      },
+      {
+       "entity": "input_button.floor3d_bathroom",
+       "object_id": "room_3_1",
+       "type3d": "camera"
+      },
+      {
+       "entity": "input_button.floor3d_office",
+       "object_id": "room_4_1",
+       "type3d": "camera"
+      },
+      {
+       "entity": "input_button.floor3d_garage",
+       "object_id": "room_5_1",
+       "type3d": "camera"
+      },
+      {
+       "entity": "light.kitchen_ceiling",
+       "object_id": "lamp_kitchen",
+       "type3d": "light"
+      },
+      {
+       "entity": "switch.coffee_maker",
+       "object_id": "coffee_maker",
+       "type3d": "color"
+      },
+      {
+       "entity": "light.kitchen_island",
+       "object_id": "kitchen_island",
+       "type3d": "light"
+      },
+      {
+       "entity": "media_player.living_room_tv",
+       "object_id": "tv",
+       "type3d": "color"
+      },
+      {
+       "entity": "light.living_room_floor_lamp",
+       "object_id": "lamp_living",
+       "type3d": "light"
+      },
+      {
+       "entity": "climate.thermostat",
+       "object_id": "thermostat",
+       "type3d": "text"
+      },
+      {
+       "entity": "lock.front_door",
+       "object_id": "front_door",
+       "type3d": "door"
+      },
+      {
+       "entity": "sensor.living_room_temperature",
+       "object_id": "thermostat",
+       "type3d": "text"
+      },
+      {
+       "entity": "light.bedside_lamp",
+       "object_id": "lamp_bedside",
+       "type3d": "light"
+      },
+      {
+       "entity": "fan.bedroom_ceiling_fan",
+       "object_id": "fan_bedroom",
+       "type3d": "rotate"
+      },
+      {
+       "entity": "light.bathroom_vanity",
+       "object_id": "vanity",
+       "type3d": "light"
+      },
+      {
+       "entity": "fan.bathroom_exhaust",
+       "object_id": "<bath>",
+       "type3d": "rotate"
+      },
+      {
+       "entity": "light.office_desk_lamp",
+       "object_id": "lamp_desk",
+       "type3d": "light"
+      },
+      {
+       "entity": "switch.office_heater",
+       "object_id": "desk",
+       "type3d": "color"
+      },
+      {
+       "entity": "cover.garage_door",
+       "object_id": "garage_door",
+       "type3d": "cover"
+      },
+      {
+       "entity": "light.garage_lights",
+       "object_id": "lamp_garage",
+       "type3d": "light"
+      },
+      {
+       "entity": "switch.workbench_outlet",
+       "object_id": "workbench",
+       "type3d": "color"
+      }
+     ],
+     "object_groups": [
+      {
+       "object_group": "bath",
+       "objects": [
+        {
+         "object_id": "bathtub"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

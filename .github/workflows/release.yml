@@ -1,0 +1,19 @@
+name: Release
+on:
+  push: { tags: ["v*"] }
+permissions: { contents: write }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Check tag matches package.json
+        run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+      - run: npm run build
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: floor3d-snapshot-card.zip
+          generate_release_notes: true

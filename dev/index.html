@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>floor3d-snapshot-card · dev harness</title>
+<style>
+:root{--primary-text-color:#27384b;--secondary-text-color:#6a7889;--rgb-primary-text-color:33,33,33;--rgb-primary-color:3,169,244;--primary-color:#03a9f4;--card-background-color:#fff;--ha-card-background:#fff;--secondary-background-color:#f3f5f7;--divider-color:rgba(0,0,0,.12);--warning-color:#e69500;--error-color:#db4437;--success-color:#2e7d32;--text-primary-color:#fff;font-family:Roboto,Arial,sans-serif;background:#eef1f4;color:#27384b}
+:root[data-theme=dark]{--primary-text-color:#e7edf4;--secondary-text-color:#9fabbc;--rgb-primary-text-color:231,237,244;--card-background-color:#1f2732;--ha-card-background:#1f2732;--secondary-background-color:#283241;--divider-color:rgba(255,255,255,.12);background:#141b24;color:#e7edf4}
+body{margin:0}.bar{display:flex;gap:12px;align-items:center;padding:10px 16px;font-size:12px;color:var(--secondary-text-color)}.bar button{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid var(--divider-color);background:transparent;color:inherit;cursor:pointer}
+.wrap{display:grid;grid-template-columns:460px minmax(0,1fr);gap:16px;padding:0 16px 16px;align-items:start}#editor{background:var(--card-background-color);border-radius:16px;padding:14px;max-height:calc(100vh - 70px);overflow:auto}
+ha-card{display:block;background:var(--ha-card-background);border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="bar"><b>floor3d-snapshot-card</b> dev harness · simulated Home Assistant<button id="theme">Light / dark</button><span id="status"></span></div>
+<div class="wrap"><div id="editor"></div><div id="card"></div></div>
+<script type="module">
+// --- stand-ins for Home Assistant's own elements -------------------------------
+customElements.define("ha-icon", class extends HTMLElement {
+  static get observedAttributes() { return ["icon"]; }
+  connectedCallback() { this.draw(); } attributeChangedCallback() { this.draw(); }
+  draw() { this.style.display = "inline-grid"; this.style.placeItems = "center"; this.innerHTML = `<svg viewBox="0 0 24 24" width="100%" height="100%"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/></svg>`; this.title = this.getAttribute("icon") || ""; }
+});
+if (!customElements.get("ha-card")) customElements.define("ha-card", class extends HTMLElement {});
+
+// --- data: private real-world fixtures if present, else the bundled demo ----------
+const tryJson = async (u) => { try { const r = await fetch(u); return r.ok ? r.json() : null; } catch { return null; } };
+const params = new URLSearchParams(location.search);
+const usePrivate = params.get("fixture") !== "demo";
+let dashboard = usePrivate ? await tryJson("/dev/private/main-dashboard.json") : null;
+let entityIds = usePrivate ? await tryJson("/dev/private/entities.json") : null;
+if (!dashboard) { dashboard = await tryJson("/dev/demo/dashboard.json"); entityIds = await tryJson("/dev/demo/entities.json"); }
+
+const states = {};
+const friendly = (id) => id.split(".")[1].replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+for (const id of entityIds || []) {
+  const d = id.split(".")[0], attributes = { friendly_name: friendly(id) };
+  let state = "off";
+  if (d === "light") Object.assign(attributes, { brightness: 160, supported_color_modes: ["brightness"] });
+  if (d === "fan") Object.assign(attributes, { supported_features: 1, percentage: 0 });
+  if (d === "media_player") Object.assign(attributes, { supported_features: 4 | 128 | 256, volume_level: 0.3 });
+  if (d === "climate") { state = "heat"; Object.assign(attributes, { temperature: 70, current_temperature: 68, target_temp_step: 1 }); }
+  if (d === "cover") { state = "closed"; if (/garage/.test(id)) attributes.device_class = "garage"; }
+  if (d === "lock") state = "locked";
+  if (d === "sensor") { state = "21.5"; attributes.unit_of_measurement = "°C"; }
+  if (d === "input_button") state = "2026-01-01T00:00:00";
+  states[id] = { entity_id: id, state, attributes };
+}
+let n = 0;
+for (const id of Object.keys(states)) if (id.startsWith("light.") && n++ % 4 === 0) states[id] = { ...states[id], state: "on" };
+
+const calls = [];
+const hass = {
+  states, connected: true, connection: { connected: true },
+  config: { unit_system: { temperature: "°F" } }, themes: { darkMode: false }, user: { is_admin: true },
+  callWS: async (msg) => {
+    if (msg.type === "lovelace/dashboards/list") return [{ url_path: "dashboard-main", title: "Main", mode: "storage" }];
+    if (msg.type === "lovelace/config") { if (msg.url_path === "dashboard-main") return JSON.parse(JSON.stringify(dashboard)); return { views: [] }; }
+    if (msg.type === "image/delete") return null;
+    throw Object.assign(new Error("unknown command"), { code: "unknown_command" });
+  },
+  fetchWithAuth: (url, init) => fetch(url, init),
+  callService: async (domain, service, data) => {
+    calls.push({ domain, service, data });
+    const id = data.entity_id, s = { ...hass.states[id], attributes: { ...hass.states[id].attributes } };
+    if (service === "turn_on") s.state = "on"; if (service === "turn_off") s.state = "off";
+    if (service === "set_percentage") { s.state = "on"; s.attributes.percentage = data.percentage; }
+    if (data.brightness_pct) s.attributes.brightness = Math.round(data.brightness_pct * 2.55);
+    if (service === "volume_set") s.attributes.volume_level = data.volume_level;
+    if (service === "lock") s.state = "locked"; if (service === "close_cover") s.state = "closed";
+    if (service === "set_temperature") s.attributes.temperature = data.temperature;
+    hass.states = { ...hass.states, [id]: s };
+    push();
+  },
+};
+
+// --- mount editor + card ----------------------------------------------------------
+await import("/dist/floor3d-snapshot-card.js");
+const Card = customElements.get("floor3d-snapshot-card");
+const editor = await Card.getConfigElement();
+const card = document.createElement("floor3d-snapshot-card");
+let config = { type: "custom:floor3d-snapshot-card", ...Card.getStubConfig() };
+editor.setConfig(config); card.setConfig(config);
+const push = () => { const h = { ...hass }; editor.hass = h; card.hass = h; };
+push();
+editor.addEventListener("config-changed", (e) => { config = e.detail.config; card.setConfig(config); editor.setConfig(config); window.__config = config; });
+document.getElementById("editor").appendChild(editor);
+document.getElementById("card").appendChild(card);
+document.getElementById("theme").onclick = () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; hass.themes = { darkMode: dark }; push(); };
+window.harness = { hass, card, editor, calls, getConfig: () => config, setConfig: (c) => { config = c; editor.setConfig(c); card.setConfig(c); }, push };
+document.getElementById("status").textContent = `${Object.keys(states).length} simulated entities · fixture: ${usePrivate && entityIds ? "private" : "demo"}`;
+</script>
+</body>
+</html>

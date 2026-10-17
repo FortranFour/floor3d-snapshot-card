@@ -1,0 +1,7 @@
+{
+  "name": "Floor3D Snapshot Card",
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "floor3d-snapshot-card.zip",
+  "homeassistant": "2024.8.0"
+}
