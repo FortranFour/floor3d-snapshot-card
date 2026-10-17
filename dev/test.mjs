@@ -86,8 +86,36 @@ check((await page.evaluate(() => window.harness.calls.length)) === before + 1, "
 await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); c.view = { ...(c.view || {}), azimuth: 60 }; window.harness.setConfig(c); });
 const stale = await ed(function () { return root.querySelector('[data-section="snapshot"] .badge').textContent; });
 check(stale === "Out of date", "changing the view marks the snapshot out of date", stale);
+// 5. sunlight: enable, re-render, the card relights the picture
+await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); delete c.view.azimuth; c.sun = { enabled: true, north: 30 }; window.harness.setConfig(c); });
+check((await ed(function () { return root.querySelector('[data-section="snapshot"] .badge').textContent; })) === "Out of date", "turning sunlight on asks for a new render");
+await clickEd('[data-act="render"]');
+await waitEd(() => !window.harness.editor._busy && window.harness.getConfig().snapshot?.light, 900000);
+const lsnap = await page.evaluate(() => window.harness.getConfig().snapshot);
+const lightKB = await page.evaluate(async (u) => Math.round((await (await fetch(u)).blob()).size / 1024), lsnap.light);
+check(!!lsnap.lighting?.depth && lightKB < 250, "lighting layer baked and uploaded", `${lightKB} KB`);
+await page.waitForFunction(() => window.harness.card._light && window.harness.card._index, null, { timeout: 30000 });
+const sunAt = async (h) => {
+  const t = await page.evaluate((h) => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() + h * 3600000; }, h);
+  await page.evaluate((t) => window.dispatchEvent(new CustomEvent("floor3d-snapshot-sun-preview", { detail: { time: t } })), t);
+  await page.waitForFunction(() => { const c = window.harness.card; return c._sunPos && c._shadeKey.startsWith(`${Math.round(c._sunPos.azimuth)}|`) && c._directKey === c._shadeKey && c._sunKey.startsWith(c._shadeKey); }, null, { timeout: 60000 });
+  return page.evaluate(() => { const c = window.harness.card, cv = c.shadowRoot.querySelector("canvas.sun.show"), x = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; let s = 0, n = 0; for (let i = 0; i < x.length; i += 4) if (x[i + 3]) { s += x[i] + x[i + 1] + x[i + 2]; n++; } return { el: Math.round(c._sunPos.elevation), mean: Math.round(s / n / 3), canvases: c.shadowRoot.querySelectorAll("canvas.sun").length, compass: !!c.shadowRoot.querySelector(".compass") }; });
+};
+const noon = await sunAt(12.5), night = await sunAt(0.5);
+check(noon.canvases === 2 && noon.compass, "sun layers and north arrow present");
+check(noon.el > night.el && noon.mean > night.mean + 25, "midday is brighter than midnight", `noon ${JSON.stringify(noon)} night ${JSON.stringify(night)}`);
+await page.locator("#card").screenshot({ path: `${shots}/card-sun-night.png` });
+await sunAt(16);
+await page.locator("#card").screenshot({ path: `${shots}/card-sun.png` });
+await page.evaluate(() => { const r = window.harness.editor.shadowRoot; for (const d of r.querySelectorAll("details[data-section]")) d.open = d.dataset.section === "sun"; r.querySelector('[data-section="sun"]').scrollIntoView(); });
+await page.waitForTimeout(200);
+await page.locator("#editor").screenshot({ path: `${shots}/editor-sun.png` });
+await page.evaluate(() => window.dispatchEvent(new CustomEvent("floor3d-snapshot-sun-preview", { detail: { time: null } })));
+await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); c.sun.enabled = false; window.harness.setConfig(c); });
+await page.waitForTimeout(300);
+check((await page.evaluate(() => window.harness.card.shadowRoot.querySelectorAll("canvas.sun").length)) === 0, "switching sunlight off removes the layer");
 // editor screenshot with the first room open (README)
-await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('details.room').open = true; });
+await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);
 await page.evaluate(() => window.harness.editor.shadowRoot.querySelector('details.room').scrollIntoView());
 await page.locator("#editor").screenshot({ path: `${shots}/editor-room.png` });

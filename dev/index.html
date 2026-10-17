@@ -53,7 +53,7 @@ for (const id of Object.keys(states)) if (id.startsWith("light.") && n++ % 4 ===
 const calls = [];
 const hass = {
   states, connected: true, connection: { connected: true },
-  config: { unit_system: { temperature: "°F" } }, themes: { darkMode: false }, user: { is_admin: true },
+  config: { unit_system: { temperature: "°F" }, latitude: Number(params.get("lat") ?? 51.48), longitude: Number(params.get("lon") ?? 0) }, themes: { darkMode: false }, user: { is_admin: true },
   callWS: async (msg) => {
     if (msg.type === "lovelace/dashboards/list") return [{ url_path: "dashboard-main", title: "Main", mode: "storage" }];
     if (msg.type === "lovelace/config") { if (msg.url_path === "dashboard-main") return JSON.parse(JSON.stringify(dashboard)); return { views: [] }; }

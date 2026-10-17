@@ -9,6 +9,7 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { nearestNormal } from "./sun.js";
 
 export const VIEW_DEFAULTS = {
   azimuth: 45, elevation: 52, width: 1600, height: 1000, supersample: 2,
@@ -18,6 +19,7 @@ export const VIEW_DEFAULTS = {
   clay: "#EFE7DC", floor_color: "#E6E0D6", room_colors: false,
   exposure: 0.95, env_intensity: 0.35, contrast: 1.08, saturate: 1.18,
   crop_pad: 0.012, pin_room: 26, jpeg_quality: 0.86, matte: "#ECE8E2",
+  sunlight: false,   // also bake the lighting layer; the picture is lit evenly so the card can relight it
 };
 
 const ROOM_PALETTE = ["#F2C46D", "#9CC5A1", "#8FB8DE", "#E8A598", "#4FC99A", "#B9A6D9", "#8ED1CF", "#F0B8C8", "#C9D88A", "#B8C2CC", "#F4A97A", "#A9C7E8"];
@@ -259,9 +261,10 @@ class Session {
     const vis = new THREE.Box3();
     scene.traverse((o) => { if (o.isMesh && shown(o)) vis.expandByObject(o); });
     const center = vis.getCenter(new THREE.Vector3()), size = vis.getSize(new THREE.Vector3()), span = Math.max(size.x, size.z);
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xb7a58c, 0.9);
-    const sun = new THREE.DirectionalLight(0xfff3e0, 2.2);
-    sun.position.copy(center).addScaledVector(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(35), THREE.MathUtils.degToRad(160)), span * 2);
+    // Sunlight mode: even, sun-at-noon lighting — the card adds direction and shadow later.
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xb7a58c, cfg.sunlight ? 1.9 : 0.9);
+    const sun = new THREE.DirectionalLight(0xfff3e0, cfg.sunlight ? 1.0 : 2.2);
+    sun.position.copy(center).addScaledVector(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(cfg.sunlight ? 8 : 35), THREE.MathUtils.degToRad(160)), span * 2);
     sun.target.position.copy(center);
     scene.add(hemi, sun, sun.target); added.push(hemi, sun, sun.target);
 
@@ -327,6 +330,7 @@ class Session {
     indexRenderer.dispose();
     for (const [o, k, v] of swap) o[k] = v;
     scene.environment = env;
+    const light = cfg.sunlight ? (onProgress("Baking the lighting layer…"), await tick(), lightPass(scene, cam, W, H, vis)) : null;
 
     // Crop to the visible model plus pins.
     const img = fctx.getImageData(0, 0, W, H).data;
@@ -368,6 +372,30 @@ class Session {
     }
     const mask = document.createElement("canvas"); mask.width = cw; mask.height = ch;
     mask.getContext("2d").putImageData(idx, 0, 0);
+    // Lighting layer at half resolution (the card shades at half resolution):
+    // R,G = 16-bit depth from the camera, B = surface direction index (255 = none).
+    let lightCanvas = null;
+    if (light) {
+      const lw = Math.ceil(cw / 2), lh = Math.ceil(ch / 2);
+      lightCanvas = document.createElement("canvas"); lightCanvas.width = lw; lightCanvas.height = lh;
+      const lctx = lightCanvas.getContext("2d"), out = lctx.createImageData(lw, lh), o = out.data, cache = new Map();
+      for (let y = 0; y < lh; y++) for (let x = 0; x < lw; x++) {
+        const i = (y * lw + x) * 4;
+        o[i + 3] = 255; o[i + 2] = 255;
+        for (const [ox, oy] of [[0, 0], [1, 1], [1, 0], [0, 1]]) {           // first covered pixel of the 2×2 block
+          const fx = Math.min(cw - 1, x * 2 + ox), fy = Math.min(ch - 1, y * 2 + oy);
+          const j = ((fy + y0) * W + fx + x0) * 4;
+          if (light.normal[j + 3] < 250 || d[(fy * cw + fx) * 4 + 3] < 8) continue;
+          o[i] = light.depth[j]; o[i + 1] = light.depth[j + 1];
+          const key = (light.normal[j] << 16) | (light.normal[j + 1] << 8) | light.normal[j + 2];
+          let k = cache.get(key);
+          if (k === undefined) { k = nearestNormal(light.normal[j] / 127.5 - 1, light.normal[j + 1] / 127.5 - 1, light.normal[j + 2] / 127.5 - 1); cache.set(key, k); }
+          o[i + 2] = k;
+          break;
+        }
+      }
+      lctx.putImageData(out, 0, 0);
+    }
 
     // Restore the scene for further renders.
     for (const o of added) o.parent?.remove(o);
@@ -378,6 +406,7 @@ class Session {
     const result = {
       image: await toBlob(pic, "image/jpeg", cfg.jpeg_quality),
       index: await toBlob(mask, "image/png"),
+      ...(lightCanvas ? { light: await toBlob(lightCanvas, "image/png"), lighting: lightMeta(cam, W, H, light) } : {}),
       width: cw, height: ch, aspect: +(cw / ch).toFixed(4),
       rooms: {},
     };
@@ -393,6 +422,77 @@ class Session {
     onProgress("Done.");
     return result;
   }
+}
+
+// ---- lighting layer ------------------------------------------------------------
+const LIGHT_VERT = `
+#include <clipping_planes_pars_vertex>
+varying vec3 vN; varying float vDepth;
+void main() {
+  vec4 world = modelMatrix * vec4(position, 1.0);
+  vN = normalize(mat3(modelMatrix) * normal);
+  vec4 mvPosition = viewMatrix * world;
+  vDepth = -mvPosition.z;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <clipping_planes_vertex>
+}`;
+const LIGHT_FRAG = `
+#include <clipping_planes_pars_fragment>
+uniform vec3 viewDir; uniform float near; uniform float far; uniform float mode;
+varying vec3 vN; varying float vDepth;
+void main() {
+  #include <clipping_planes_fragment>
+  if (mode < 0.5) {
+    vec3 n = normalize(vN);
+    if (dot(n, viewDir) > 0.0) n = -n;          // face the camera whatever the winding
+    gl_FragColor = vec4(n * 0.5 + 0.5, 1.0);
+  } else {
+    float v = floor(clamp((vDepth - near) / (far - near), 0.0, 1.0) * 65535.0 + 0.5);
+    float hi = floor(v / 256.0);
+    gl_FragColor = vec4(hi / 255.0, (v - hi * 256.0) / 255.0, 0.0, 1.0);
+  }
+}`;
+
+/** Render world-space surface directions and camera depth (no anti-aliasing). */
+function lightPass(scene, cam, W, H, vis) {
+  let near = Infinity, far = -Infinity;
+  for (const x of [vis.min.x, vis.max.x]) for (const y of [vis.min.y, vis.max.y]) for (const z of [vis.min.z, vis.max.z]) {
+    const dz = -new THREE.Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse).z; near = Math.min(near, dz); far = Math.max(far, dz);
+  }
+  const viewDir = new THREE.Vector3(0, 0, -1).transformDirection(cam.matrixWorld);
+  const uniforms = { viewDir: { value: viewDir }, near: { value: near }, far: { value: far }, mode: { value: 0 } };
+  const swap = [], mats = new Map();
+  const matFor = (planes) => {
+    const key = planes?.[0] || null;
+    if (!mats.has(key)) mats.set(key, new THREE.ShaderMaterial({ uniforms, vertexShader: LIGHT_VERT, fragmentShader: LIGHT_FRAG, side: THREE.DoubleSide, clipping: !!key, clippingPlanes: key ? [key] : null }));
+    return mats.get(key);
+  };
+  scene.traverse((o) => {
+    if (o.isLineSegments) { swap.push([o, "visible", o.visible]); o.visible = false; return; }
+    if (!o.isMesh) return;
+    if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+    swap.push([o, "material", o.material]);
+    o.material = matFor((Array.isArray(o.material) ? o.material[0] : o.material).clippingPlanes || null);
+  });
+  const env = scene.environment; scene.environment = null;
+  const r = new THREE.WebGLRenderer({ antialias: false, alpha: true, preserveDrawingBuffer: true });
+  r.setPixelRatio(1); r.setSize(W, H, false); r.outputColorSpace = THREE.LinearSRGBColorSpace; r.toneMapping = THREE.NoToneMapping;
+  r.localClippingEnabled = true; r.setClearColor(0x000000, 0);
+  const grab = () => { const c = document.createElement("canvas"); c.width = W; c.height = H; const x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(r.domElement, 0, 0); return x.getImageData(0, 0, W, H).data; };
+  r.render(scene, cam); const normal = grab();
+  uniforms.mode.value = 1; r.render(scene, cam); const depth = grab();
+  r.dispose(); mats.forEach((m) => m.dispose());
+  for (const [o, k, v] of swap) o[k] = v;
+  scene.environment = env;
+  return { normal, depth, near, far };
+}
+function lightMeta(cam, W, H, light) {
+  const v = (x, y, z) => new THREE.Vector3(x, y, z).transformDirection(cam.matrixWorld).toArray().map((n) => +n.toFixed(5));
+  return {
+    right: v(1, 0, 0), up: v(0, 1, 0), forward: v(0, 0, -1),
+    pixel: [+((cam.right - cam.left) / W * 2).toPrecision(6), +((cam.top - cam.bottom) / H * 2).toPrecision(6)],   // model units per lighting-image pixel
+    depth: [+light.near.toPrecision(7), +light.far.toPrecision(7)],
+  };
 }
 
 // ---- helpers ------------------------------------------------------------------

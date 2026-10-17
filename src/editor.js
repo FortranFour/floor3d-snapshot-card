@@ -1,4 +1,6 @@
 // Visual editor for floor3d-snapshot-card. Loaded only when the card editor opens.
+import { solarPosition, compassName } from "./sun.js";
+const SUN_PREVIEW_EVENT = "floor3d-snapshot-sun-preview";
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const clone = (v) => JSON.parse(JSON.stringify(v ?? null));
 const slug = (name, taken = new Set()) => {
@@ -14,6 +16,7 @@ const PLACES = [["east", "East of first model"], ["west", "West"], ["north", "No
 export const snapshotKey = (config) => hash({
   models: (config.models || []).map(({ url, mtl, place, offset, rotate, scale }) => ({ url, mtl, place, offset, rotate, scale })),
   view: config.view || {},
+  ...(config.sun?.enabled ? { sun: true } : {}),
   rooms: (config.rooms || []).map(({ id, floors, anchor, pin_offset, color }) => ({ id, floors, anchor, pin_offset, color })),
 });
 
@@ -42,11 +45,12 @@ class Floor3dSnapshotCardEditor extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._open = { model: true, rooms: true, snapshot: false, display: false };
+    this._open = { model: true, rooms: true, snapshot: false, sun: false, display: false };
     this._roomOpen = new Set();
     this._floor3d = {};      // url -> {entities, groups} from scanned floor3d cards
     this._shadowRootEvents();
   }
+  disconnectedCallback() { if (this._previewTime != null) { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); } }
   setConfig(config) { this._config = clone(config) || {}; this._config.rooms ||= []; this._config.models ||= []; this._render(); }
   set hass(hass) { const first = !this._hass; this._hass = hass; if (first) this._render(); }
 
@@ -69,7 +73,8 @@ class Floor3dSnapshotCardEditor extends HTMLElement {
 ${this._section("model", "1 · Model", c.models.length ? `${c.models.length} model${c.models.length > 1 ? "s" : ""}` : "None", "", this._modelSection())}
 ${this._section("rooms", "2 · Rooms", `${c.rooms.length} room${c.rooms.length === 1 ? "" : "s"}`, "", this._roomsSection())}
 ${this._section("snapshot", "3 · Snapshot", status[1], status[0], this._snapshotSection(status))}
-${this._section("display", "4 · Display", "", "", this._displaySection())}`;
+${this._section("sun", "4 · Sunlight", c.sun?.enabled ? (snap?.light ? "On" : "Needs a render") : "Off", c.sun?.enabled && !snap?.light ? "warn" : "", this._sunSection())}
+${this._section("display", "5 · Display", "", "", this._displaySection())}`;
     if (focus) root.querySelector(`[data-key="${CSS.escape(focus)}"]`)?.focus();
   }
   _section(id, title, badge, badgeClass, body) {
@@ -128,6 +133,26 @@ ${status[0] === "warn" && snap ? '<p class="note warn">Rooms, models or view cha
 ${snap ? `<div class="preview"><img src="${esc(snap.image)}" style="-webkit-mask-image:url(&quot;${esc(snap.index)}&quot;);mask-image:url(&quot;${esc(snap.index)}&quot;);aspect-ratio:${Number(snap.aspect) || 1.2}"></div><p class="note">${snap.width}×${snap.height}px</p>` : ""}`;
   }
 
+  _sunSection() {
+    const c = this._config, s = c.sun || {}, snap = c.snapshot;
+    const lat = s.latitude ?? this._hass?.config?.latitude, lon = s.longitude ?? this._hass?.config?.longitude;
+    const hasLoc = Number.isFinite(Number(lat)) && Number.isFinite(Number(lon)) && (Number(lat) || Number(lon));
+    const north = Number(s.north) || 0, strength = Number(s.strength ?? 0.6);
+    const t = this._previewTime ?? Date.now(), d = new Date(t);
+    const hours = d.getHours() + d.getMinutes() / 60;
+    const pos = hasLoc ? solarPosition(d, Number(lat), Number(lon)) : null;
+    const sunText = !pos ? "" : pos.elevation > 0 ? `sun ${Math.round(pos.elevation)}° up in the ${compassName(pos.azimuth)}` : pos.elevation > -6 ? "twilight" : "night";
+    const when = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return `<label class="check"><input type="checkbox" data-field="sun.enabled" data-bool ${s.enabled ? "checked" : ""}>Simulate sunlight — shading and shadows follow the sun through the day, warm at dawn and dusk, dim at night</label>
+${s.enabled ? `${!hasLoc ? '<p class="note err">Home Assistant has no home location (Settings → System → General). Sunlight needs it.</p>' : `<p class="note">Sun position from your home location (${Number(lat).toFixed(2)}°, ${Number(lon).toFixed(2)}°) and the viewer's clock, updated every few minutes (more often around sunrise and sunset).</p>`}
+${!snap?.light ? '<p class="note warn">Render the snapshot again (section 3) to add the lighting layer.</p>' : ""}
+<div class="row"><label>North: <span data-unit="°">${north}°</span><input type="range" min="0" max="359" step="1" data-field="sun.north" data-num value="${north}" data-key="sn"></label><label style="max-width:110px">Degrees<input type="number" min="0" max="359" data-field="sun.north" data-num value="${north}" data-key="sn2"></label></div>
+<p class="note">Clockwise from the top of the floor plan — the same as the compass “North direction” in Sweet Home 3D. Check it with the north arrow on the map.</p>
+<div class="row"><label>Strength: <span data-unit="%">${Math.round(strength * 100)}%</span><input type="range" min="0.2" max="1" step="0.05" data-field="sun.strength" data-num data-pct value="${strength}" data-key="ss"></label></div>
+<div class="row"><label class="check"><input type="checkbox" data-field="sun.shadows" data-bool data-default-true ${s.shadows !== false ? "checked" : ""}>Shadows</label><label class="check"><input type="checkbox" data-field="sun.night_glow" data-bool data-default-true ${s.night_glow !== false ? "checked" : ""}>Rooms with lights on glow after dark</label><label class="check"><input type="checkbox" data-field="sun.compass" data-bool data-default-true ${s.compass !== false ? "checked" : ""}>North arrow</label></div>
+${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when)}</b> · <span id="sun-text">${esc(sunText)}</span><input type="range" id="sun-preview" min="0" max="23.75" step="0.25" value="${hours.toFixed(2)}" data-key="sp"></label><button data-act="sun-live" ${this._previewTime == null ? "disabled" : ""}>Now</button></div><p class="note">The preview only changes this editor's view; the card always follows the real time.</p>` : ""}` : ""}`;
+  }
+
   _displaySection() {
     const c = this._config;
     return `<div class="row"><label>Title<input type="text" data-field="title" value="${esc(c.title || "")}" data-key="dt"></label><label>Subtitle<input type="text" data-field="subtitle" value="${esc(c.subtitle ?? "")}" placeholder="Tap a room on the map to see its controls." data-key="ds"></label></div>
@@ -147,7 +172,13 @@ ${snap ? `<div class="preview"><img src="${esc(snap.image)}" style="-webkit-mask
       if (d.dataset?.room !== undefined) { const id = this._config.rooms[d.dataset.room]?.id; if (id) d.open ? this._roomOpen.add(id) : this._roomOpen.delete(id); }
     }, true);
     root.addEventListener("change", (e) => { if (e.target.id === "detect-sensors") { this._detectSensors = e.target.checked; return; } this._field(e.target); });
-    root.addEventListener("input", (e) => { if (e.target.type === "range") { const l = e.target.closest("label"); if (l) l.firstChild.textContent = l.firstChild.textContent.replace(/[\d.]+°/, `${e.target.value}°`); } });
+    root.addEventListener("input", (e) => {
+      const el = e.target; if (el.type !== "range") return;
+      if (el.id === "sun-preview") return this._preview(Number(el.value));
+      const l = el.closest("label"), unit = l?.querySelector("[data-unit]");
+      if (unit) unit.textContent = unit.dataset.unit === "%" ? `${Math.round(el.value * 100)}%` : `${el.value}${unit.dataset.unit}`;
+      else if (l) l.firstChild.textContent = l.firstChild.textContent.replace(/[\d.]+°/, `${el.value}°`);
+    });
     root.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id?.match(/^(new-model|ent-|floor-)/)) { e.preventDefault(); e.target.closest(".row")?.querySelector("button")?.click(); } });
     root.addEventListener("click", (e) => { const b = e.target.closest("button[data-act]"); if (b && !b.disabled) this._act(b.dataset.act, b.dataset, b); });
   }
@@ -200,8 +231,22 @@ ${snap ? `<div class="preview"><img src="${esc(snap.image)}" style="-webkit-mask
     }
     if (act === "ent-remove") { rooms[i].entities.splice(j, 1); return this._emit(); }
     if (act === "ent-up" && j) { const e = rooms[i].entities; [e[j - 1], e[j]] = [e[j], e[j - 1]]; return this._emit(); }
+    if (act === "sun-live") { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); return this._render(); }
     if (act === "detect") return this._detect();
     if (act === "render") return this._renderSnapshot();
+  }
+
+  _preview(hours) {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    this._previewTime = d.getTime() + hours * 3600000;
+    window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: this._previewTime } }));
+    // update the label in place (no re-render while dragging)
+    const c = this._config.sun || {}, lat = c.latitude ?? this._hass?.config?.latitude, lon = c.longitude ?? this._hass?.config?.longitude;
+    const pos = solarPosition(new Date(this._previewTime), Number(lat), Number(lon));
+    const r = this.shadowRoot;
+    r.getElementById("sun-when").textContent = new Date(this._previewTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    r.getElementById("sun-text").textContent = pos.elevation > 0 ? `sun ${Math.round(pos.elevation)}° up in the ${compassName(pos.azimuth)}` : pos.elevation > -6 ? "twilight" : "night";
+    const live = r.querySelector('[data-act="sun-live"]'); if (live) live.disabled = false;
   }
 
   // ---- floor3d discovery ----------------------------------------------------
@@ -279,19 +324,20 @@ ${snap ? `<div class="preview"><img src="${esc(snap.image)}" style="-webkit-mask
     try {
       const session = await this._engine();
       const c = this._config;
-      const result = await session.render({ view: c.view || {}, rooms: c.rooms, onProgress: (p) => { this._progress = p; this._render(); } });
+      const result = await session.render({ view: { ...(c.view || {}), sunlight: !!c.sun?.enabled }, rooms: c.rooms, onProgress: (p) => { this._progress = p; this._render(); } });
       this._progress = c.storage === "embed" ? "Embedding…" : "Uploading to Home Assistant…"; this._render();
       const old = c.snapshot;
-      let image, index, ids = {};
-      if (c.storage === "embed") { image = await dataUrl(result.image); index = await dataUrl(result.index); }
+      let image, index, light, ids = {};
+      if (c.storage === "embed") { image = await dataUrl(result.image); index = await dataUrl(result.index); if (result.light) light = await dataUrl(result.light); }
       else {
         const a = await this._upload(result.image, "floor3d-snapshot.jpg"), b = await this._upload(result.index, "floor3d-snapshot-index.png");
         image = a.url; index = b.url; ids = { image_id: a.id, index_id: b.id };
+        if (result.light) { const l = await this._upload(result.light, "floor3d-snapshot-light.png"); light = l.url; ids.light_id = l.id; }
       }
-      c.snapshot = { image, index, ...ids, aspect: result.aspect, width: result.width, height: result.height, rooms: result.rooms, key: snapshotKey(c) };
-      for (const id of [old?.image_id, old?.index_id]) if (id) this._hass.callWS({ type: "image/delete", image_id: id }).catch(() => {});
-      const kb = Math.round((result.image.size + result.index.size) / 1024);
-      this._msg = { snapshot: ["", `Snapshot saved (${kb} KB for guests to download).`] };
+      c.snapshot = { image, index, ...(light ? { light, lighting: result.lighting } : {}), ...ids, aspect: result.aspect, width: result.width, height: result.height, rooms: result.rooms, key: snapshotKey(c) };
+      for (const id of [old?.image_id, old?.index_id, old?.light_id]) if (id) this._hass.callWS({ type: "image/delete", image_id: id }).catch(() => {});
+      const kb = Math.round((result.image.size + result.index.size) / 1024), lkb = result.light ? Math.round(result.light.size / 1024) : 0;
+      this._msg = { snapshot: ["", `Snapshot saved (${kb} KB for guests to download${lkb ? `, plus ${lkb} KB for sunlight` : ""}).`] };
     } catch (err) {
       this._msg = { snapshot: ["err", `Rendering failed: ${err.message || err}`] };
     } finally { this._busy = null; this._progress = ""; this._emit(); }

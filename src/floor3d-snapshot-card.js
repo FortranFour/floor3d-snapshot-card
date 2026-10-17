@@ -2,7 +2,10 @@
  * 3D model. Guests' devices load one small module and two images; the 3D work runs
  * only in the card editor (see snapshot.js, loaded on demand).
  */
+import { solarPosition, sunVector, northVector, compassName } from "./sun.js";
+import { decodeLight, shade, compose, nextUpdateMinutes } from "./sunlight.js";
 export const VERSION = typeof __VERSION__ !== "undefined" ? __VERSION__ : "dev";
+export const SUN_PREVIEW_EVENT = "floor3d-snapshot-sun-preview";
 
 const BAD = new Set(["unknown", "unavailable", "none", ""]);
 const available = (s) => !!s && !BAD.has(s.state);
@@ -23,7 +26,8 @@ ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
 .head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 2px 8px}.head h2{margin:0;font-size:20px;font-weight:500;letter-spacing:-.3px}.head p{margin:2px 0 0;color:var(--f3s-muted);font-size:13px}
 .layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:16px;align-items:start}:host(.stacked) .layout{grid-template-columns:1fr}
 .map{position:relative;width:min(100%,calc((100vh - 260px) * var(--aspect,1.2)));min-width:min(100%,280px);margin:0 auto;aspect-ratio:var(--aspect,1.2);-webkit-user-select:none;user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:default}.map.hovering{cursor:pointer}
-.map img,.map canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}.map img{-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}:host(.dark) .map img{filter:brightness(.8) contrast(1.05)}
+.map{isolation:isolate}.map img,.map canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}.map img,.map canvas.sun{-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}.map canvas.sun{mix-blend-mode:multiply;opacity:0;transition:opacity 2.4s ease}.map canvas.sun.show{opacity:1}.map.preview canvas.sun{transition-duration:.2s}
+.compass{position:absolute;left:4px;bottom:4px;width:30px;height:30px;border-radius:50%;border:1px solid var(--f3s-line);background:var(--f3s-surface);color:var(--f3s-muted);display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}.compass svg{width:24px;height:24px;transform:rotate(var(--north,0deg))}:host(.dark) .map img{filter:brightness(.8) contrast(1.05)}
 .pins{position:absolute;inset:0}.pin{position:absolute;transform:translate(-15px,-50%);display:flex;align-items:center;gap:5px;height:30px;min-width:30px;padding:0 5px;border-radius:15px;border:1px solid var(--f3s-line);background:var(--f3s-surface);color:var(--f3s-muted);box-shadow:0 1px 4px rgba(0,0,0,.12);font-size:12px;font-weight:500;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s ease}.pin:before{content:"";position:absolute;inset:-8px}.pin ha-icon{width:18px;height:18px}.pin-name{display:none;padding-right:3px}.pin.on{color:var(--f3s-amber);border-color:rgba(223,172,42,.55)}.pin[aria-pressed=true]{background:var(--f3s-blue);border-color:var(--f3s-blue);color:#fff;z-index:2}.pin-count{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;border-radius:8px;background:var(--f3s-amber);color:#fff;font-size:10px;line-height:16px;text-align:center;padding:0 4px;font-weight:600}
 .pin.always,.map.labels .pin,.pin:focus-visible,.pin.hover{opacity:1;pointer-events:auto}.pin.flash{animation:f3s-flash 2.6s ease forwards}@keyframes f3s-flash{0%,65%{opacity:1}100%{opacity:0}}.pin.hover .pin-name,.pin.flash .pin-name,.map.labels .pin[aria-pressed=true] .pin-name{display:inline}
 .legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:8px;color:var(--f3s-muted);font-size:12px}.swatch{display:inline-block;width:11px;height:11px;border-radius:4px;margin-right:6px;vertical-align:-1px}.swatch.sel{background:rgba(var(--rgb-primary-color,3,169,244),.5)}.swatch.on{background:rgba(255,193,7,.5)}.toggle{margin-left:auto;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:3px 10px;border:1px solid var(--f3s-line);border-radius:10px;background:transparent;color:var(--f3s-muted);font-size:12px}.toggle[aria-pressed=true]{color:var(--f3s-blue);border-color:rgba(var(--rgb-primary-color,3,169,244),.5);background:rgba(var(--rgb-primary-color,3,169,244),.07)}.toggle ha-icon{width:16px;height:16px}
@@ -73,7 +77,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (new Set(ids).size !== ids.length) throw new Error("Room ids must be unique");
     this._config = { guest_mode: true, ...config, rooms };
     if (!ids.includes(this._room)) this._room = ids.includes(config.default_room) ? config.default_room : ids[0];
-    this._mapEl = null; this._index = null; this._tintKey = "";
+    this._mapEl = null; this._index = null; this._tintKey = ""; this._light = null; this._direct = null; this._shadeKey = ""; this._directKey = ""; this._sunKey = "";
     this._entities = new Set(rooms.flatMap((r) => (r.entities || []).map((e) => e.entity)));
     this._request();
   }
@@ -84,12 +88,22 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const theme = `${hass?.themes?.theme}|${hass?.themes?.darkMode}`;
     if (theme !== this._theme) { this._theme = theme; this._primary = ""; this._tintKey = ""; }
     if (!old || [...this._entities].some((id) => old.states[id] !== hass.states[id])) this._request();
+    if (!old) this._updateSun();
   }
   get hass() { return this._hass; }
   getCardSize() { return 10; }
   getGridOptions() { return { columns: "full", rows: "auto" }; }
-  connectedCallback() { this._ro?.observe(this); this._layout(); this._request(); }
-  disconnectedCallback() { this._ro?.disconnect(); clearTimeout(this._pt); clearTimeout(this._toastTimer); this._pointer = false; }
+  connectedCallback() {
+    this._ro?.observe(this); this._layout(); this._request();
+    this._onPreview ||= (e) => { this._sunPreview = Number.isFinite(e.detail?.time) ? e.detail.time : null; this._mapEl?.classList.toggle("preview", this._sunPreview !== null); this._updateSun(); };
+    this._onVisible ||= () => { if (document.visibilityState === "visible") this._updateSun(); };
+    window.addEventListener(SUN_PREVIEW_EVENT, this._onPreview); document.addEventListener("visibilitychange", this._onVisible);
+    this._updateSun();
+  }
+  disconnectedCallback() {
+    this._ro?.disconnect(); clearTimeout(this._pt); clearTimeout(this._toastTimer); clearTimeout(this._sunTimer); this._pointer = false;
+    window.removeEventListener(SUN_PREVIEW_EVENT, this._onPreview); document.removeEventListener("visibilitychange", this._onVisible);
+  }
 
   _layout() {
     const w = this.getBoundingClientRect().width;
@@ -225,9 +239,11 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const el = document.createElement("div");
     el.className = "map"; el.dataset.src = snap.image;
     el.style.setProperty("--aspect", String(Number(snap.aspect) > 0 ? Number(snap.aspect) : 1.2));
-    el.innerHTML = '<img alt="" decoding="async" draggable="false"><canvas aria-hidden="true"></canvas><div class="pins"></div>';
+    const sun = this._sunOn(snap);
+    el.innerHTML = `<img alt="" decoding="async" draggable="false">${sun ? '<canvas class="sun" aria-hidden="true"></canvas><canvas class="sun" aria-hidden="true"></canvas>' : ""}<canvas class="tint" aria-hidden="true"></canvas>${sun && this._config.sun.compass !== false ? '<div class="compass" role="img"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l4 9h-8z" fill="#d9534f"/><path d="M8 12h8l-4 9z" fill="currentColor" opacity=".35"/><text x="12" y="13.6" font-size="5.2" text-anchor="middle" fill="#fff" font-family="sans-serif" font-weight="700">N</text></svg></div>' : ""}<div class="pins"></div>`;
+    el.classList.toggle("preview", this._sunPreview != null);
     const img = el.querySelector("img");
-    if (snap.index) { img.style.webkitMaskImage = `url("${snap.index}")`; img.style.maskImage = `url("${snap.index}")`; }
+    if (snap.index) for (const m of el.querySelectorAll("img,canvas.sun")) { m.style.webkitMaskImage = `url("${snap.index}")`; m.style.maskImage = `url("${snap.index}")`; }
     img.src = snap.image;
     let down = null, frame = 0;
     el.addEventListener("pointerdown", (e) => { down = e.target.closest("button") ? null : { x: e.clientX, y: e.clientY, t: Date.now(), type: e.pointerType }; });
@@ -242,6 +258,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     el.addEventListener("pointerleave", (e) => this._hover(e));
     this._mapEl = el; this._index = null; this._tintKey = "";
     if (snap.index) this._loadIndex(snap, el);
+    if (sun) this._loadLight(snap, el);
     return el;
   }
   _loadIndex(snap, el) {
@@ -259,8 +276,8 @@ export class Floor3dSnapshotCard extends HTMLElement {
       const w = Math.ceil(cv.width / 2), h = Math.ceil(cv.height / 2), half = new Uint8Array(w * h);
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) half[y * w + x] = codes[(y * 2) * cv.width + x * 2];
       this._index = { w: cv.width, h: cv.height, codes, ids, tw: w, th: h, half };
-      const t = el.querySelector("canvas"); t.width = w; t.height = h;
-      this._tintKey = ""; this._paint();
+      const t = el.querySelector("canvas.tint"); t.width = w; t.height = h;
+      this._tintKey = ""; this._sunKey = ""; this._paint();
     };
     image.src = snap.index;
   }
@@ -277,7 +294,8 @@ export class Floor3dSnapshotCard extends HTMLElement {
     this._paint();
   }
   _paint() {
-    const ix = this._index, cv = this._mapEl?.querySelector("canvas");
+    this._composeSun();
+    const ix = this._index, cv = this._mapEl?.querySelector("canvas.tint");
     if (!ix || !cv) return;
     if (!this._primary) this._primary = (getComputedStyle(this).getPropertyValue("--rgb-primary-color") || "").trim() || "3,169,244";
     const on = this._config.rooms.filter((r) => this._activeCount(r)).map((r) => r.id);
@@ -297,6 +315,70 @@ export class Floor3dSnapshotCard extends HTMLElement {
     }
     ctx.putImageData(img, 0, 0);
   }
+  // ---- sunlight ---------------------------------------------------------------
+  _sunOn(snap = this._snap()) { return !!(this._config?.sun?.enabled && snap?.light && snap.lighting?.depth); }
+  _location() {
+    const s = this._config?.sun || {}, c = this._hass?.config || {};
+    const lat = Number(s.latitude ?? c.latitude), lon = Number(s.longitude ?? c.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon) ? [lat, lon] : null;
+  }
+  _loadLight(snap, el) {
+    decodeLight(snap.light, snap.lighting).then((L) => {
+      if (this._mapEl !== el) return;
+      this._light = L;
+      for (const cv of el.querySelectorAll("canvas.sun")) { cv.width = L.w; cv.height = L.h; }
+      this._updateSun();
+    }).catch(() => { /* picture stays as rendered */ });
+  }
+  /** Recompute the sun position; re-shade when it moved, then schedule the next update. */
+  async _updateSun() {
+    clearTimeout(this._sunTimer);
+    if (!this._config) return;
+    const snap = this._snap(), loc = this._location();
+    if (!this.isConnected || !this._sunOn(snap) || !loc) return;
+    const cfg = this._config.sun, north = Number(cfg.north) || 0;
+    const pos = solarPosition(new Date(this._sunPreview ?? Date.now()), loc[0], loc[1]);
+    this._sunPos = pos;
+    if (this._sunPreview == null) this._sunTimer = setTimeout(() => this._updateSun(), nextUpdateMinutes(pos.elevation) * 60000);
+    this._updateCompass(snap, north, pos);
+    const L = this._light; if (!L) return;
+    const key = `${Math.round(pos.azimuth)}|${Math.round(pos.elevation * 2)}|${north}|${cfg.shadows !== false}`;
+    if (key === this._shadeKey) return this._composeSun();
+    this._shadeKey = key;
+    const gen = (this._shadeGen = (this._shadeGen || 0) + 1);
+    const direct = pos.elevation > -3 ? await shade(L, sunVector(pos, north), { shadows: cfg.shadows !== false, isStale: () => gen !== this._shadeGen || this._light !== L }) : null;
+    if (gen !== this._shadeGen || this._light !== L) return;
+    this._direct = direct; this._directKey = key; this._sunKey = "";
+    this._composeSun();
+  }
+  _composeSun() {
+    // keep showing the previous frame until the new sun position has been shaded
+    const L = this._light, el = this._mapEl; if (!L || !el || !this._shadeKey || this._directKey !== this._shadeKey) return;
+    const cfg = this._config.sun, ix = this._index, glow = cfg.night_glow !== false;
+    const on = glow ? this._config.rooms.filter((r) => this._activeCount(r)).map((r) => r.id) : [];
+    const elev = this._sunPos?.elevation ?? 30;
+    const key = `${this._shadeKey}|${Math.round(elev * 2)}|${on}|${cfg.strength ?? ""}|${!!ix}|${this._direct ? 1 : 0}`;
+    if (key === this._sunKey) return;
+    this._sunKey = key;
+    let lit = null;
+    if (ix && on.length && ix.tw === L.w && ix.th === L.h) {
+      const rooms = new Uint8Array(ix.ids.length + 1); ix.ids.forEach((id, i) => { if (on.includes(id)) rooms[i + 1] = 1; });
+      lit = new Uint8Array(L.w * L.h); for (let i = 0; i < lit.length; i++) lit[i] = rooms[ix.half[i]];
+    }
+    const [a, b] = el.querySelectorAll("canvas.sun"); if (!a || !b) return;
+    const next = a.classList.contains("show") ? b : a, prev = next === a ? b : a;
+    compose(next.getContext("2d"), L, this._direct, elev, { strength: Number(cfg.strength ?? 0.6), lit });
+    next.classList.add("show"); prev.classList.remove("show");
+  }
+  _updateCompass(snap, north, pos) {
+    const c = this._mapEl?.querySelector(".compass"); if (!c) return;
+    const m = snap.lighting, n = northVector(north);
+    const sx = n[0] * m.right[0] + n[1] * m.right[1] + n[2] * m.right[2], sy = -(n[0] * m.up[0] + n[1] * m.up[1] + n[2] * m.up[2]);
+    c.style.setProperty("--north", `${(Math.atan2(sx, -sy) * 180 / Math.PI).toFixed(1)}deg`);
+    const label = pos.elevation > 0 ? `Sun ${Math.round(pos.elevation)}° up in the ${compassName(pos.azimuth)}` : pos.elevation > -6 ? "Twilight" : "Night";
+    c.setAttribute("aria-label", `North arrow. ${label}`); c.title = `North · ${label}`;
+  }
+
   _roomAt(e, reach = 0.035, pinFallback = true) {
     const rect = this._mapEl?.getBoundingClientRect(); if (!rect?.width) return undefined;
     const u = (e.clientX - rect.left) / rect.width, v = (e.clientY - rect.top) / rect.height;

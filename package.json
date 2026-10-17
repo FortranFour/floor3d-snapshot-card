@@ -1,6 +1,6 @@
 {
   "name": "floor3d-snapshot-card",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Turn a floor3d-family 3D model into a fast, static, tappable floor plan card for Home Assistant",
   "type": "module",
   "private": true,
