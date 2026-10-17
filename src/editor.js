@@ -114,12 +114,29 @@ ${c.rooms.map((r, i) => this._roomEditor(r, i)).join("")}`;
 <div class="row"><label>Name<input type="text" data-field="rooms.${i}.name" value="${esc(r.name || "")}" data-key="rn${i}"></label><label>Icon<input type="text" data-field="rooms.${i}.icon" value="${esc(r.icon || "")}" placeholder="mdi:sofa-outline" data-key="ri${i}"></label></div>
 <label>Floor objects (tap target and tint)</label><div class="chips">${(r.floors || []).map((f, j) => `<span class="chip">${esc(objRef(f))}<button data-act="floor-remove" data-i="${i}" data-j="${j}" title="Remove">✕</button></span>`).join("") || '<span class="note">None — the room shows as a pin only.</span>'}</div>
 <div class="row"><label>Add floor object<input type="text" list="f3s-objects" placeholder="room_3_1" data-key="rf${i}" id="floor-${i}"></label>${multi ? `<label style="max-width:110px">Model<select id="floor-model-${i}">${this._config.models.map((_, m) => `<option value="${m}">${m + 1}</option>`).join("")}</select></label>` : ""}<button data-act="floor-add" data-i="${i}">Add</button></div>
-${(r.floors || []).length ? "" : `<div class="row"><label>Pin anchor object<input type="text" list="f3s-objects" data-field="rooms.${i}.anchor.object" value="${esc(r.anchor?.object || "")}" data-key="ra${i}"></label></div>`}
+${(r.floors || []).length ? "" : this._anchorEditor(r, i, multi)}
 <label>Entities</label>
 ${ents.map((e, j) => `<div class="ent"><label>Entity<input type="text" list="f3s-entities" data-field="rooms.${i}.entities.${j}.entity" value="${esc(e.entity)}" data-key="re${i}-${j}"></label><label>Label<input type="text" data-field="rooms.${i}.entities.${j}.name" value="${esc(e.name || "")}" placeholder="${esc(this._hass?.states[e.entity]?.attributes?.friendly_name || "")}" data-key="rl${i}-${j}"></label><div class="tools"><button class="icon" data-act="ent-up" data-i="${i}" data-j="${j}" ${j ? "" : "disabled"} title="Move up">↑</button><button class="icon" data-act="ent-remove" data-i="${i}" data-j="${j}" title="Remove">✕</button></div></div>${this._hass && e.entity && !this._hass.states[e.entity] ? `<p class="note warn">${esc(e.entity)} doesn't exist.</p>` : ""}`).join("")}
 <div class="row"><label>Add entity<input type="text" list="f3s-entities" placeholder="light.kitchen" data-key="ra-${i}" id="ent-${i}"></label><button data-act="ent-add" data-i="${i}">Add</button></div>
 <div class="row"><button class="icon" data-act="room-up" data-i="${i}" ${i ? "" : "disabled"}>↑ Move up</button><button class="icon" data-act="room-down" data-i="${i}" ${i < n - 1 ? "" : "disabled"}>↓ Move down</button><button class="icon" data-act="room-remove" data-i="${i}">Delete room</button></div>
 </div></details>`;
+  }
+
+  /** Pin anchor for a room without a floor: an object to stand the pin on, with suggestions
+   *  from the floor3d objects bound to the room's entities. */
+  _anchorEditor(r, i, multi) {
+    const sugg = [];
+    this._config.models.forEach((m, model) => {
+      const f = this._floor3d[m.url]; if (!f) return;
+      for (const e of r.entities || []) for (const b of f.entities.filter((x) => x.entity === e.entity)) {
+        const g = /^<(.+)>$/.exec(b.object_id || ""), object = g ? f.groups?.[g[1]]?.[0] : b.object_id;
+        if (object && !sugg.some((s) => s.model === model && s.object === object)) sugg.push({ model, object });
+      }
+    });
+    const a = r.anchor;
+    return `<div class="row"><label>Pin anchor object<input type="text" list="f3s-objects" data-field="rooms.${i}.anchor.object" value="${esc(a?.object || "")}" placeholder="an object the pin stands on" data-key="ra${i}"></label>${multi ? `<label style="max-width:110px">Model<select data-field="rooms.${i}.anchor.model" data-num data-key="ram${i}">${this._config.models.map((_, m) => `<option value="${m}" ${(a?.model ?? 0) === m ? "selected" : ""}>${m + 1}</option>`).join("")}</select></label>` : ""}</div>
+${a?.object ? "" : `<p class="note warn">No floor object and no anchor: this room has no place on the map. The card shows it as a button under the map; pick an anchor to give it a pin.</p>`}
+${sugg.length ? `<div class="chips"><span class="note" style="margin:0 4px 0 0">From the floor3d card:</span>${sugg.slice(0, 8).map((s) => `<button class="icon" data-act="anchor-pick" data-i="${i}" data-model="${s.model}" data-obj="${esc(s.object)}">${esc(multi ? `${s.model + 1}:${s.object}` : s.object)}</button>`).join("")}</div>` : ""}`;
   }
 
   _snapshotSection(status) {
@@ -247,6 +264,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     }
     if (act === "ent-remove") { rooms[i].entities.splice(j, 1); return this._emit(); }
     if (act === "ent-up" && j) { const e = rooms[i].entities; [e[j - 1], e[j]] = [e[j], e[j - 1]]; return this._emit(); }
+    if (act === "anchor-pick") { rooms[i].anchor = { model: Number(d.model) || 0, object: d.obj }; return this._emit(); }
     if (act === "preview") return this._previewOpen ? this._closePreview(true) : this._openPreview();
     if (act === "view-reset" || act === "view-top") {
       c.view = { ...(c.view || {}), ...(act === "view-top" ? { azimuth: 0, elevation: 90, roll: 0 } : VIEW_RESET) };
@@ -423,7 +441,8 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       c.snapshot = { image, index, ...(light ? { light, lighting: result.lighting } : {}), ...(result.stage ? { style: result.style, stage: result.stage } : {}), ...ids, aspect: result.aspect, width: result.width, height: result.height, rooms: result.rooms, key: snapshotKey(c) };
       for (const id of [old?.image_id, old?.index_id, old?.light_id]) if (id) this._hass.callWS({ type: "image/delete", image_id: id }).catch(() => {});
       const kb = Math.round((result.image.size + result.index.size) / 1024), lkb = result.light ? Math.round(result.light.size / 1024) : 0;
-      this._msg = { snapshot: ["", `Snapshot saved (${kb} KB for guests to download${lkb ? `, plus ${lkb} KB for sunlight` : ""}).`] };
+      const unplaced = c.rooms.filter((r) => !result.rooms[r.id]?.pin).map((r) => r.name || r.id);
+      this._msg = { snapshot: [unplaced.length ? "warn" : "", `Snapshot saved (${kb} KB for guests to download${lkb ? `, plus ${lkb} KB for sunlight` : ""}).${unplaced.length ? ` No place on the map for: ${unplaced.join(", ")} — they show as buttons under the map. Give them a floor object or a pin anchor (section 2) and render again.` : ""}`] };
     } catch (err) {
       this._msg = { snapshot: ["err", `Rendering failed: ${err.message || err}`] };
     } finally { this._busy = null; this._progress = ""; this._emit(); if (reopen && this._previewOpen) this._openPreview(); }

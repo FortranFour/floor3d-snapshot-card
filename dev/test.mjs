@@ -156,6 +156,25 @@ for (const r of rooms) {
 check(hits2 >= rooms.length - 1, "rolled, neon map still selects rooms by tap", `${hits2}/${rooms.length}`);
 await clickEd('[data-act="preview"]');
 check((await page.evaluate(() => !window.harness.editor._pv && !window.harness.editor._previewOpen)), "preview closes");
+// 7. a room with no floor and no anchor stays reachable; an anchor from the floor3d card gives it a pin
+const bound = await page.evaluate(() => { const ed = window.harness.editor, url = window.harness.getConfig().models[0].url; return ed._floor3d[url].entities.find((e) => e.entity.startsWith("light.") && !/^</.test(e.object_id)); });
+await page.evaluate((ent) => { const c = structuredClone(window.harness.getConfig()); c.rooms.push({ id: "outdoor", name: "Outdoor Lighting", icon: "mdi:outdoor-lamp", floors: [], entities: [{ entity: ent }] }); window.harness.setConfig(c); }, bound.entity);
+await clickEd('[data-act="render"]');
+await waitEd(() => !window.harness.editor._busy && window.harness.getConfig().snapshot?.rooms?.outdoor, 900000);
+const unplacedMsg = await ed(function () { return root.querySelector('[data-section="snapshot"] .note.warn')?.textContent || ""; });
+check(/No place on the map for: Outdoor Lighting/.test(unplacedMsg), "render warns about a room with no place on the map");
+await page.waitForTimeout(300);
+const chipsNow = await page.evaluate(() => [...window.harness.card.shadowRoot.querySelectorAll(".chip")].map((c) => c.dataset.room));
+check(chipsNow.length === 1 && chipsNow[0] === "outdoor", "unplaced room shows as a button under the map", JSON.stringify(chipsNow));
+await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="rooms"]').open = true; window.harness.editor._open.rooms = true; window.harness.editor._roomOpen.add("outdoor"); window.harness.editor._render(); });
+const sugg = await page.evaluate(() => [...window.harness.editor.shadowRoot.querySelectorAll('[data-act="anchor-pick"]')].map((b) => b.dataset.obj));
+check(sugg.includes(bound.object_id), "anchor suggestions come from the floor3d card's bindings", JSON.stringify(sugg));
+await clickEd(`[data-act="anchor-pick"][data-obj="${bound.object_id}"]`);
+await clickEd('[data-act="render"]');
+await waitEd(() => !window.harness.editor._busy && Array.isArray(window.harness.getConfig().snapshot?.rooms?.outdoor?.pin), 900000);
+await page.waitForTimeout(300);
+const after = await page.evaluate(() => ({ chips: window.harness.card.shadowRoot.querySelectorAll(".chip").length, pin: !!window.harness.card.shadowRoot.querySelector('.pin[data-room="outdoor"]') }));
+check(after.pin && after.chips === 0, "anchored room gets a pin on the map", JSON.stringify(after));
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);

@@ -363,7 +363,8 @@ class Session {
     const pins = {};
     const project = (v) => { const p = v.clone().project(cam); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H]; };
     for (const room of rooms) {
-      const objs = (room.floors?.length ? room.floors : room.anchor ? [room.anchor] : []).map((f) => this.find(f.model, f.object)).filter(Boolean);
+      // an anchor is looked up in its model first, then in any model
+      const objs = (room.floors?.length ? room.floors : room.anchor?.object ? [room.anchor] : []).map((f) => this.find(f.model ?? 0, f.object) || this.roots.map((_, m) => this.find(m, f.object)).find(Boolean)).filter(Boolean);
       if (!objs.length) continue;
       const b = new THREE.Box3(); objs.forEach((o) => b.expandByObject(o));
       const c = b.getCenter(new THREE.Vector3());

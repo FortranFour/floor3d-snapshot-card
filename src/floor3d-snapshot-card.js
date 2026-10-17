@@ -155,8 +155,11 @@ export class Floor3dSnapshotCard extends HTMLElement {
     }
     const snap = this._snap();
     const room = this._room_() || rooms[0];
-    const showChips = c.room_list === "always" || (c.room_list !== "never" && !snap);
-    this._card.innerHTML = `${this._header()}<div class="layout"><div class="mapcol">${snap ? `<div class="map-slot"></div><div class="legend"><span><i class="swatch sel"></i>Selected</span><span><i class="swatch on"></i>On</span><button class="toggle" data-action="labels" data-focus="labels" aria-pressed="${!!this._labels}">${icon("mdi:label-outline")}Labels</button></div>` : ""}${showChips ? `<div class="chips" role="tablist">${rooms.map((r) => `<button class="chip" data-action="room" data-room="${esc(r.id)}" data-focus="chip-${esc(r.id)}" aria-pressed="${r.id === room.id}">${icon(r.icon || "mdi:door-open")}${esc(titleCase(r.name || r.id))}</button>`).join("")}</div>` : ""}</div>${this._panel(room)}</div>${this._toast ? `<div class="toast" role="status">${esc(this._toast)}</div>` : ""}`;
+    // Room buttons: all rooms without a snapshot (or with room_list: always); otherwise only the
+    // rooms the map can't show (no floor and no anchor), so every room stays reachable.
+    const chipRooms = c.room_list === "always" || (!snap && c.room_list !== "never") ? rooms : snap ? rooms.filter((r) => !Array.isArray(snap.rooms?.[r.id]?.pin)) : [];
+    const showChips = chipRooms.length > 0;
+    this._card.innerHTML = `${this._header()}<div class="layout"><div class="mapcol">${snap ? `<div class="map-slot"></div><div class="legend"><span><i class="swatch sel"></i>Selected</span><span><i class="swatch on"></i>On</span><button class="toggle" data-action="labels" data-focus="labels" aria-pressed="${!!this._labels}">${icon("mdi:label-outline")}Labels</button></div>` : ""}${showChips ? `<div class="chips" role="tablist">${chipRooms.map((r) => `<button class="chip" data-action="room" data-room="${esc(r.id)}" data-focus="chip-${esc(r.id)}" aria-pressed="${r.id === room.id}">${icon(r.icon || "mdi:door-open")}${esc(titleCase(r.name || r.id))}</button>`).join("")}</div>` : ""}</div>${this._panel(room)}</div>${this._toast ? `<div class="toast" role="status">${esc(this._toast)}</div>` : ""}`;
     const slot = this._card.querySelector(".map-slot");
     if (slot) { slot.appendChild(this._ensureMap(snap)); this._updateMap(snap); }
     const chips = this._card.querySelector(".chips"); if (chips) chips.scrollLeft = scrollChips;

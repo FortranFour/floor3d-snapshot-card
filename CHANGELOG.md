@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-10-17
+
+- A room with no floor object and no pin anchor (an "Outdoor Lighting" group, say) no longer disappears: the card lists it as a button under the map, and the editor warns about it, both in the room and after rendering.
+- Pin anchor: quick picks from the floor3d objects bound to the room's entities, a model selector with two or more models, and a lookup in every model if the object isn't in the one named.
+
 ## 0.3.0 — 2026-10-17
 
 - **Styles**: Neon, Blueprint and Day, the look themes of floor3dx-card (muted per-pixel surface colours, edge lines that glow in Neon and Blueprint, saturated colours kept), alongside the standard look. Themed maps sit on the theme's stage colour, which follows the sun when sunlight is on.
