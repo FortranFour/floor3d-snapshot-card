@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-10-17
+
+- **Styles**: Neon, Blueprint and Day, the look themes of floor3dx-card (muted per-pixel surface colours, edge lines that glow in Neon and Blueprint, saturated colours kept), alongside the standard look. Themed maps sit on the theme's stage colour, which follows the sun when sunlight is on.
+- **View**: turn (Y), tilt (X) and the new roll (Z), down to a straight plan view. The snapshot stays an orthographic projection.
+- **3D preview** in the editor: drag to turn and tilt, scroll to zoom, styled as it will render; *Reset view* and *Straight down*.
+- Picking a floor3dx card copies its `look.theme` and `north` when they aren't already set here.
+
 ## 0.2.0 — 2026-10-17
 
 - **Sunlight**: an optional layer that relights the snapshot for the real sun through the day, with surface shading, wall shadows, warm dawn and dusk, muted night, and rooms with lights on glowing after dark. It is computed on the viewer's device in 2D from a baked lighting image, so no 3D runs there.

@@ -10,6 +10,9 @@ const slug = (name, taken = new Set()) => {
 };
 const hash = (v) => { const s = JSON.stringify(v); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const ENTITY_DOMAINS = /^(light|switch|fan|cover|climate|media_player|lock|input_boolean|scene|script|sensor|binary_sensor|remote|button|input_button|vacuum|humidifier|valve|water_heater|alarm_control_panel)\./;
+const STYLES = [["standard", "Standard"], ["neon", "Neon"], ["blueprint", "Blueprint"], ["day", "Day"]];
+const STAGE_BG = { neon: "#0b1120", blueprint: "#1a4682", day: "#d6e0ee" };
+const VIEW_RESET = { azimuth: 45, elevation: 52, roll: 0 };
 const PLACES = [["east", "East of first model"], ["west", "West"], ["north", "North"], ["south", "South"], ["as-is", "Keep model coordinates"]];
 
 /** The part of the configuration a snapshot depends on. */
@@ -39,6 +42,8 @@ button{font:inherit;cursor:pointer;min-height:36px;padding:6px 12px;border-radiu
 .preview{position:relative;margin:10px 0;border-radius:10px;overflow:hidden;background:var(--secondary-background-color,rgba(127,127,127,.08))}.preview img{display:block;width:100%;-webkit-mask-size:100% 100%;mask-size:100% 100%}
 ha-icon{--mdc-icon-size:20px;width:20px;height:20px;color:var(--secondary-text-color)}
 .found{max-height:220px;overflow:auto}
+.pv{position:relative;margin:10px 0;border-radius:12px;overflow:hidden;background:var(--secondary-background-color,rgba(127,127,127,.08))}.pv canvas{display:block;width:100%;aspect-ratio:4/3;touch-action:none;cursor:grab}.pv canvas:active{cursor:grabbing}.pv .pvhint{position:absolute;left:8px;bottom:6px;font-size:11px;color:#fff;background:rgba(0,0,0,.45);padding:2px 8px;border-radius:8px;pointer-events:none}.pv .pvbusy{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;color:var(--secondary-text-color);pointer-events:none}.pv [hidden]{display:none}
+input[type=color]{width:52px;height:38px;padding:2px;border-radius:8px;border:1px solid var(--divider-color,rgba(127,127,127,.35));background:transparent}
 `;
 
 class Floor3dSnapshotCardEditor extends HTMLElement {
@@ -50,7 +55,7 @@ class Floor3dSnapshotCardEditor extends HTMLElement {
     this._floor3d = {};      // url -> {entities, groups} from scanned floor3d cards
     this._shadowRootEvents();
   }
-  disconnectedCallback() { if (this._previewTime != null) { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); } }
+  disconnectedCallback() { this._closePreview(); this._previewOpen = false; if (this._previewTime != null) { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); } }
   setConfig(config) { this._config = clone(config) || {}; this._config.rooms ||= []; this._config.models ||= []; this._render(); }
   set hass(hass) { const first = !this._hass; this._hass = hass; if (first) this._render(); }
 
@@ -76,6 +81,7 @@ ${this._section("snapshot", "3 · Snapshot", status[1], status[0], this._snapsho
 ${this._section("sun", "4 · Sunlight", c.sun?.enabled ? (snap?.light ? "On" : "Needs a render") : "Off", c.sun?.enabled && !snap?.light ? "warn" : "", this._sunSection())}
 ${this._section("display", "5 · Display", "", "", this._displaySection())}`;
     if (focus) root.querySelector(`[data-key="${CSS.escape(focus)}"]`)?.focus();
+    this._mountPreview();
   }
   _section(id, title, badge, badgeClass, body) {
     return `<details data-section="${id}" ${this._open[id] ? "open" : ""}><summary>${title}<span class="badge ${badgeClass}">${esc(badge)}</span></summary><div class="body">${body}</div></details>`;
@@ -86,7 +92,7 @@ ${this._section("display", "5 · Display", "", "", this._displaySection())}`;
     const found = this._found;
     return `<p class="note">Pick the floor3d card whose model you want to snapshot. floor3d-card, floor3dpro-card and floor3dx-card (GLB, glTF or OBJ) are supported. Add a second card (e.g. a detached garage) to show both.</p>
 <div class="row"><button data-act="scan" ${this._scanning ? "disabled" : ""}>${this._scanning ? "Searching dashboards…" : "Find floor3d cards in my dashboards"}</button></div>
-${found ? (found.length ? `<div class="found">${found.map((f, i) => `<div class="item"><div class="title"><b>${esc(f.label)}</b><button data-act="use-found" data-i="${i}" ${c.models.some((m) => m.url === f.url) ? "disabled" : ""}>${c.models.some((m) => m.url === f.url) ? "Added" : "Use"}</button></div><div class="note">${esc(f.url)} · ${f.entities.length} entities</div></div>`).join("")}</div>` : `<p class="note warn">No floor3d cards found in dashboards you can read. Add the model URL below.</p>`) : ""}
+${found ? (found.length ? `<div class="found">${found.map((f, i) => `<div class="item"><div class="title"><b>${esc(f.label)}</b><button data-act="use-found" data-i="${i}" ${c.models.some((m) => m.url === f.url) ? "disabled" : ""}>${c.models.some((m) => m.url === f.url) ? "Added" : "Use"}</button></div><div class="note">${esc(f.url)} · ${f.entities.length} entities${f.look ? ` · ${f.look} look` : ""}${f.north !== undefined ? ` · north ${f.north}°` : ""}</div></div>`).join("")}</div>` : `<p class="note warn">No floor3d cards found in dashboards you can read. Add the model URL below.</p>`) : ""}
 ${c.models.map((m, i) => `<div class="item"><div class="title"><b>${i + 1}. ${esc(m.url)}</b><button class="icon" data-act="model-remove" data-i="${i}" title="Remove">✕</button></div>${i ? `<div class="row"><label>Placement<select data-field="models.${i}.place" data-key="mp${i}">${PLACES.map(([v, t]) => `<option value="${v}" ${(m.place || "east") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label><label>Rotate (°)<input type="number" step="90" data-field="models.${i}.rotate" data-num value="${esc(m.rotate ?? 0)}" data-key="mr${i}"></label></div>` : ""}${/\.obj(\?|$)/i.test(m.url) ? `<label>MTL file<input type="text" data-field="models.${i}.mtl" value="${esc(m.mtl || "")}" data-key="mm${i}"></label>` : ""}</div>`).join("")}
 <div class="row"><label>Or add a model URL<input type="text" placeholder="/local/floor3d/home.glb" data-key="new-model" id="new-model"></label><button data-act="model-add">Add</button></div>`;
   }
@@ -120,7 +126,12 @@ ${ents.map((e, j) => `<div class="ent"><label>Entity<input type="text" list="f3s
     const c = this._config, v = c.view || {}, snap = c.snapshot;
     const store = c.storage || "upload";
     return `<p class="note">Renders a static picture of the model in this browser and stores it with Home Assistant, so guests' devices never run 3D.</p>
-<div class="row"><label>View angle: ${esc(v.azimuth ?? 45)}°<input type="range" min="0" max="359" step="5" data-field="view.azimuth" data-num value="${esc(v.azimuth ?? 45)}" data-key="va"></label><label>Tilt: ${esc(v.elevation ?? 52)}°<input type="range" min="25" max="89" step="1" data-field="view.elevation" data-num value="${esc(v.elevation ?? 52)}" data-key="ve"></label></div>
+<div class="row"><label>Style<select data-field="view.style" data-key="vst">${STYLES.map(([k, t]) => `<option value="${k}" ${(v.style || "standard") === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>${v.style === "neon" ? `<label style="flex:0 0 auto;min-width:0">Edge colour<input type="color" data-field="view.accent" value="${esc(v.accent || "#37e0ff")}" data-key="vac"></label>` : ""}</div>
+${v.style && v.style !== "standard" ? '<p class="note">The floor3dx-card look themes: muted surfaces, edge lines (glowing in Neon and Blueprint) and the theme\'s stage colour behind the map. Bright, saturated colours keep their colour.</p>' : ""}
+<label>View — the picture stays an orthographic (true-scale) projection</label>
+<div class="row"><label>Turn (Y): <span data-unit="°">${esc(v.azimuth ?? 45)}°</span><input type="range" min="0" max="359" step="1" data-field="view.azimuth" data-num data-view="azimuth" value="${esc(v.azimuth ?? 45)}" data-key="va"></label><label>Tilt (X): <span data-unit="°">${esc(v.elevation ?? 52)}°</span><input type="range" min="5" max="90" step="1" data-field="view.elevation" data-num data-view="elevation" value="${esc(v.elevation ?? 52)}" data-key="ve"></label><label>Roll (Z): <span data-unit="°">${esc(v.roll ?? 0)}°</span><input type="range" min="-180" max="180" step="1" data-field="view.roll" data-num data-view="roll" value="${esc(v.roll ?? 0)}" data-key="vr"></label></div>
+<div class="row"><button data-act="preview" ${!c.models.length ? "disabled" : ""}>${this._previewOpen ? "Hide 3D preview" : "Show 3D preview"}</button>${this._previewOpen ? '<button data-act="view-reset">Reset view</button><button data-act="view-top">Straight down</button>' : ""}</div>
+${this._previewOpen ? '<div class="pv-slot"></div><p class="note">Drag to turn and tilt, scroll to zoom the preview. Nothing is saved until you render the snapshot.</p>' : ""}
 <div class="row"><label class="check"><input type="checkbox" data-field="view.room_colors" data-bool ${v.room_colors ? "checked" : ""}>Pastel room floors</label><label class="check"><input type="checkbox" data-field="view.edges" data-bool data-default-true ${v.edges !== false ? "checked" : ""}>Outline edges</label></div>
 <details><summary>Advanced</summary><div class="body">
 <label>Hide objects matching (regex)<input type="text" data-field="view.hide" value="${esc(v.hide ?? "^room_\\d+_2$|^Frame")}" data-key="vh"></label>
@@ -175,6 +186,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     root.addEventListener("input", (e) => {
       const el = e.target; if (el.type !== "range") return;
       if (el.id === "sun-preview") return this._preview(Number(el.value));
+      if (el.dataset.view && this._pv) this._pv.setView({ [el.dataset.view]: Number(el.value) });
       const l = el.closest("label"), unit = l?.querySelector("[data-unit]");
       if (unit) unit.textContent = unit.dataset.unit === "%" ? `${Math.round(el.value * 100)}%` : `${el.value}${unit.dataset.unit}`;
       else if (l) l.firstChild.textContent = l.firstChild.textContent.replace(/[\d.]+°/, `${el.value}°`);
@@ -187,6 +199,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     let value = el.dataset.bool !== undefined ? el.checked : el.value;
     if (el.dataset.num !== undefined) value = value === "" ? undefined : Number(value);
     if (typeof value === "string") value = value.trim();
+    if (path === "view.style" && value === "standard") value = "";
     const keys = path.split("."), last = keys.pop();
     let o = this._config;
     keys.forEach((k, n) => { const next = keys[n + 1] ?? last; o[k] ??= /^\d+$/.test(next) ? [] : {}; o = o[k]; });
@@ -207,6 +220,9 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     if (act === "scan") return this._scan();
     if (act === "use-found") {
       const f = this._found[i]; this._floor3d[f.url] = { entities: f.entities, groups: f.groups };
+      // the first card also lends its look theme and north direction, unless already set here
+      if (!c.models.length && f.look && !c.view?.style) c.view = { ...(c.view || {}), style: f.look, ...(f.look === "neon" && f.accent ? { accent: f.accent } : {}) };
+      if (!c.models.length && f.north !== undefined && c.sun?.north === undefined) c.sun = { ...(c.sun || {}), north: f.north };
       c.models.push({ url: f.url, ...(f.mtl ? { mtl: f.mtl } : {}), ...(c.models.length ? { place: "east" } : {}) });
       this._session = null; return this._emit();
     }
@@ -231,9 +247,77 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     }
     if (act === "ent-remove") { rooms[i].entities.splice(j, 1); return this._emit(); }
     if (act === "ent-up" && j) { const e = rooms[i].entities; [e[j - 1], e[j]] = [e[j], e[j - 1]]; return this._emit(); }
+    if (act === "preview") return this._previewOpen ? this._closePreview(true) : this._openPreview();
+    if (act === "view-reset" || act === "view-top") {
+      c.view = { ...(c.view || {}), ...(act === "view-top" ? { azimuth: 0, elevation: 90, roll: 0 } : VIEW_RESET) };
+      for (const k of ["azimuth", "elevation", "roll"]) if (c.view[k] === VIEW_RESET[k]) delete c.view[k];
+      return this._emit();
+    }
     if (act === "sun-live") { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); return this._render(); }
     if (act === "detect") return this._detect();
     if (act === "render") return this._renderSnapshot();
+  }
+
+  // ---- 3D preview -------------------------------------------------------------
+  _previewView() { const v = this._config.view || {}; return { ...v, azimuth: v.azimuth ?? 45, elevation: v.elevation ?? 52, roll: v.roll ?? 0 }; }
+  _styleKey() { const { azimuth, elevation, roll, height, ...rest } = this._config.view || {}; return JSON.stringify([rest, (this._config.rooms || []).map((r) => [r.floors, r.color])]); }
+  async _openPreview() {
+    this._previewOpen = true; this._render();
+    if (!this._pvCanvas) {
+      const wrap = document.createElement("div"); wrap.className = "pv";
+      wrap.innerHTML = '<canvas></canvas><div class="pvbusy">Loading the model…</div><span class="pvhint" hidden>Drag to rotate</span>';
+      this._pvWrap = wrap; this._pvCanvas = wrap.querySelector("canvas");
+      this._wirePreview(this._pvCanvas);
+    }
+    this._mountPreview();
+    try {
+      const session = await this._engine();
+      if (!this._previewOpen || this._pv) return;
+      this._pvWrap.querySelector(".pvbusy").textContent = "Styling…";
+      this._pv = await session.openPreview(this._pvCanvas, { view: this._previewView(), rooms: this._config.rooms });
+      this._pvStyle = this._styleKey();
+      this._pvWrap.querySelector(".pvbusy").hidden = true; this._pvWrap.querySelector(".pvhint").hidden = false;
+      this._paintPreviewStage();
+    } catch (err) { this._pvWrap.querySelector(".pvbusy").textContent = `Couldn't load the model: ${err.message || err}`; }
+  }
+  _closePreview(hide = false) {
+    if (this._pv) {
+      this._pv.close(); this._pv = null;
+      // a released WebGL context can't be reacquired: the next preview gets a fresh canvas
+      const fresh = document.createElement("canvas"); this._pvCanvas.replaceWith(fresh); this._pvCanvas = fresh; this._wirePreview(fresh);
+    }
+    if (this._pvWrap) { this._pvWrap.querySelector(".pvbusy").hidden = false; this._pvWrap.querySelector(".pvbusy").textContent = "Loading the model…"; this._pvWrap.querySelector(".pvhint").hidden = true; }
+    if (hide) { this._previewOpen = false; this._render(); }
+  }
+  _mountPreview() {
+    const slot = this.shadowRoot.querySelector(".pv-slot");
+    if (!slot || !this._pvWrap) return;
+    slot.replaceWith(this._pvWrap);
+    if (this._pv) {
+      if (this._styleKey() !== this._pvStyle) { this._pvStyle = this._styleKey(); this._pv.restyle(this._previewView(), this._config.rooms).then(() => this._paintPreviewStage()); }
+      else this._pv.setView(this._previewView());
+    }
+  }
+  _paintPreviewStage() { this._pvCanvas.style.background = STAGE_BG[this._config.view?.style] || ""; }
+  _wirePreview(cv) {
+    let drag = null;
+    cv.addEventListener("pointerdown", (e) => { if (!this._pv) return; drag = { x: e.clientX, y: e.clientY, v: this._previewView() }; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const az = ((Math.round(drag.v.azimuth - (e.clientX - drag.x) * 0.4) % 360) + 360) % 360;
+      const el = Math.min(90, Math.max(5, Math.round(drag.v.elevation + (e.clientY - drag.y) * 0.3)));
+      drag.now = { azimuth: az, elevation: el };
+      this._pv.setView(drag.now);
+      for (const [k, val] of Object.entries(drag.now)) { const i = this.shadowRoot.querySelector(`input[data-view="${k}"]`); if (i) { i.value = val; const u = i.closest("label")?.querySelector("[data-unit]"); if (u) u.textContent = `${val}°`; } }
+    });
+    const end = () => {
+      if (!drag) return; const now = drag.now; drag = null;
+      if (!now) return;
+      this._config.view = { ...(this._config.view || {}), ...now };
+      this._emit();
+    };
+    cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+    cv.addEventListener("wheel", (e) => { if (!this._pv) return; e.preventDefault(); this._pv.zoom(e.deltaY < 0 ? 1.1 : 1 / 1.1); }, { passive: false });
   }
 
   _preview(hours) {
@@ -267,7 +351,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
             if (!found.some((f) => f.url === url)) {
               const groups = {};
               for (const g of node.object_groups || []) groups[g.object_group] = (g.objects || []).map((o) => o.object_id);
-              found.push({ url, mtl: node.mtlfile ? `${node.path || ""}${node.mtlfile}` : undefined, label: `${b.title || b.url_path || "Dashboard"} › ${view || "view"} · ${node.type.replace("custom:", "")}`, entities: (node.entities || []).filter((e) => typeof e.entity === "string" && typeof e.object_id === "string").map(({ entity, object_id, type3d }) => ({ entity, object_id, ...(type3d ? { type3d } : {}) })), groups });
+              found.push({ url, mtl: node.mtlfile ? `${node.path || ""}${node.mtlfile}` : undefined, look: ["neon", "blueprint", "day"].includes(String(node.look?.theme || "").toLowerCase()) ? String(node.look.theme).toLowerCase() : undefined, accent: node.look?.accent, north: northDegrees(node.north), label: `${b.title || b.url_path || "Dashboard"} › ${view || "view"} · ${node.type.replace("custom:", "")}`, entities: (node.entities || []).filter((e) => typeof e.entity === "string" && typeof e.object_id === "string").map(({ entity, object_id, type3d }) => ({ entity, object_id, ...(type3d ? { type3d } : {}) })), groups });
             } else {
               // A second card on the same model adds its entities too.
               const f = found.find((x) => x.url === url);
@@ -288,6 +372,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
   async _engine() {
     const models = this._config.models, key = JSON.stringify(models);
     if (this._session && this._sessionKey === key) return this._session;
+    if (this._pv) this._closePreview();
     this._session?.dispose?.();
     const mod = await import("./snapshot.js");
     this._session = await mod.createSession({ models, decoderBase: new URL("./", import.meta.url), onProgress: (p) => { this._progress = p; this._render(); } });
@@ -321,6 +406,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
   }
   async _renderSnapshot() {
     this._busy = "render"; this._msg = {}; this._render();
+    const reopen = !!this._pv; if (reopen) this._closePreview();
     try {
       const session = await this._engine();
       const c = this._config;
@@ -334,13 +420,13 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
         image = a.url; index = b.url; ids = { image_id: a.id, index_id: b.id };
         if (result.light) { const l = await this._upload(result.light, "floor3d-snapshot-light.png"); light = l.url; ids.light_id = l.id; }
       }
-      c.snapshot = { image, index, ...(light ? { light, lighting: result.lighting } : {}), ...ids, aspect: result.aspect, width: result.width, height: result.height, rooms: result.rooms, key: snapshotKey(c) };
+      c.snapshot = { image, index, ...(light ? { light, lighting: result.lighting } : {}), ...(result.stage ? { style: result.style, stage: result.stage } : {}), ...ids, aspect: result.aspect, width: result.width, height: result.height, rooms: result.rooms, key: snapshotKey(c) };
       for (const id of [old?.image_id, old?.index_id, old?.light_id]) if (id) this._hass.callWS({ type: "image/delete", image_id: id }).catch(() => {});
       const kb = Math.round((result.image.size + result.index.size) / 1024), lkb = result.light ? Math.round(result.light.size / 1024) : 0;
       this._msg = { snapshot: ["", `Snapshot saved (${kb} KB for guests to download${lkb ? `, plus ${lkb} KB for sunlight` : ""}).`] };
     } catch (err) {
       this._msg = { snapshot: ["err", `Rendering failed: ${err.message || err}`] };
-    } finally { this._busy = null; this._progress = ""; this._emit(); }
+    } finally { this._busy = null; this._progress = ""; this._emit(); if (reopen && this._previewOpen) this._openPreview(); }
   }
   async _upload(blob, name) {
     const form = new FormData(); form.append("file", blob, name);
@@ -349,6 +435,11 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     const json = await resp.json();
     return { id: json.id, url: `/api/image/serve/${json.id}/original` };
   }
+}
+/** floor3dx `north: {x, z}` (scene direction of north) → degrees clockwise from the plan's top. */
+function northDegrees(n) {
+  if (!n || typeof n !== "object" || !Number.isFinite(Number(n.x)) || !Number.isFinite(Number(n.z)) || (!Number(n.x) && !Number(n.z))) return undefined;
+  return (Math.round(Math.atan2(Number(n.x), -Number(n.z)) * 180 / Math.PI) + 360) % 360;
 }
 const dataUrl = (blob) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(blob); });
 

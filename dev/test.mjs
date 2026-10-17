@@ -114,6 +114,48 @@ await page.evaluate(() => window.dispatchEvent(new CustomEvent("floor3d-snapshot
 await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); c.sun.enabled = false; window.harness.setConfig(c); });
 await page.waitForTimeout(300);
 check((await page.evaluate(() => window.harness.card.shadowRoot.querySelectorAll("canvas.sun").length)) === 0, "switching sunlight off removes the layer");
+// 6. style + live 3D preview + X/Y/Z view
+await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="snapshot"]').open = true; window.harness.editor._open.snapshot = true; });
+await page.evaluate(() => { const sel = window.harness.editor.shadowRoot.querySelector('select[data-field="view.style"]'); sel.value = "neon"; sel.dispatchEvent(new Event("change", { bubbles: true })); });
+check((await page.evaluate(() => window.harness.getConfig().view.style)) === "neon", "style picker writes view.style");
+await clickEd('[data-act="preview"]');
+await page.waitForFunction(() => window.harness.editor._pv, null, { timeout: 600000 });
+await page.waitForTimeout(400);
+const pvPixels = async () => page.evaluate(() => { const cv = window.harness.editor._pvCanvas, c = document.createElement("canvas"); c.width = cv.width; c.height = cv.height; const x = c.getContext("2d"); x.drawImage(cv, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0, h = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 0) { n++; h = (h * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7) >>> 0; } return { n, h, w: cv.width }; });
+// the canvas must keep drawing: preserveDrawingBuffer is off, so redraw then read in the same frame
+const before3d = await page.evaluate(() => new Promise((res) => { const pv = window.harness.editor._pv; pv.draw(); requestAnimationFrame(() => requestAnimationFrame(() => res(true))); }));
+const box = await page.evaluate(() => { const b = window.harness.editor._pvCanvas.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, w: b.width }; });
+check(box.w > 200, "3D preview canvas is in the editor", `${Math.round(box.w)} px wide`);
+await page.screenshot({ path: `${shots}/preview-before.png`, clip: { x: box.x - box.w / 2, y: box.y - box.w * 0.375, width: box.w, height: box.w * 0.75 } });
+console.log("      view before drag", JSON.stringify(await page.evaluate(() => window.harness.getConfig().view)), JSON.stringify(await page.evaluate(() => window.harness.editor._config.view)));
+const az0 = (await page.evaluate(() => window.harness.getConfig().view.azimuth)) ?? 45;
+console.log("      hit", await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e?.tagName + " " + (e?.shadowRoot?.elementFromPoint(x, y)?.tagName || ""); }, [box.x, box.y]));
+await page.mouse.move(box.x, box.y); await page.mouse.down(); await page.mouse.move(box.x - 100, box.y + 30, { steps: 8 }); await page.mouse.up();
+await page.waitForTimeout(300);
+const v1 = await page.evaluate(() => window.harness.getConfig().view);
+console.log("      view after drag", JSON.stringify(v1));
+check(v1.azimuth === (az0 + 40) % 360 && v1.elevation === 61, "dragging the preview turns and tilts the view", JSON.stringify({ azimuth: v1.azimuth, elevation: v1.elevation }));
+await page.screenshot({ path: `${shots}/preview-after.png`, clip: { x: box.x - box.w / 2, y: box.y - box.w * 0.375, width: box.w, height: box.w * 0.75 } });
+await page.evaluate(() => { const i = window.harness.editor.shadowRoot.querySelector('input[data-view="roll"]'); i.value = "20"; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new Event("change", { bubbles: true })); });
+check((await page.evaluate(() => window.harness.getConfig().view.roll)) === 20, "roll slider writes view.roll");
+await page.locator("#editor").screenshot({ path: `${shots}/editor-preview.png` });
+await clickEd('[data-act="render"]');
+await waitEd(() => !window.harness.editor._busy && window.harness.getConfig().snapshot?.style === "neon", 120000).catch(async (e) => { console.log("RENDER WAIT", JSON.stringify(await page.evaluate(() => ({ busy: window.harness.editor._busy, msg: window.harness.editor._msg, prog: window.harness.editor._progress, snap: Object.keys(window.harness.getConfig().snapshot || {}) }))), JSON.stringify(errors)); throw e; });
+await page.waitForFunction(() => window.harness.editor._pv, null, { timeout: 60000 }).catch(async (e) => { console.log("REOPEN", JSON.stringify(await page.evaluate(() => ({ open: window.harness.editor._previewOpen, text: window.harness.editor._pvWrap?.textContent, inDom: window.harness.editor._pvWrap?.isConnected }))), JSON.stringify(errors)); throw e; });
+check(true, "preview reopens after rendering");
+await page.waitForFunction(() => window.harness.card.shadowRoot.querySelector(".map img")?.complete && window.harness.card._index, null, { timeout: 30000 });
+const staged = await page.evaluate(() => { const m = window.harness.card.shadowRoot.querySelector(".map"); return { staged: m.classList.contains("staged"), bg: getComputedStyle(m).backgroundColor }; });
+check(staged.staged && staged.bg === "rgb(11, 17, 32)", "neon snapshot shows on its stage colour", JSON.stringify(staged));
+await page.locator("#card").screenshot({ path: `${shots}/card-neon.png` });
+let hits2 = 0; const nsnap = await page.evaluate(() => window.harness.getConfig().snapshot);
+for (const r of rooms) {
+  const p = nsnap.rooms[r.id].pin, b = await page.evaluate(() => { const b = window.harness.card.shadowRoot.querySelector(".map").getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; });
+  await page.mouse.click(b.x + p[0] / 100 * b.w, b.y + p[1] / 100 * b.h + 3); await page.waitForTimeout(120);
+  if ((await page.evaluate(() => window.harness.card._room)) === r.id) hits2++;
+}
+check(hits2 >= rooms.length - 1, "rolled, neon map still selects rooms by tap", `${hits2}/${rooms.length}`);
+await clickEd('[data-act="preview"]');
+check((await page.evaluate(() => !window.harness.editor._pv && !window.harness.editor._previewOpen)), "preview closes");
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);

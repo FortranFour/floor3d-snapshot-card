@@ -12,6 +12,8 @@ Actual card created from existing floor3dx-card:
 - **Static and light.** The card shows a pre-rendered isometric picture of your model. Tablets and phones download one ~34 KB module and two images (typically 100–200 KB); no 3D runs on them.
 - **Tap a floor, get its controls.** Each room's floor is the button. The selected room is washed in your theme color, rooms with something on glow amber, and a mouse hover names the room. Pins stay hidden so the picture stays clean (a **Labels** toggle shows them).
 - **Built from your floor3d card.** The visual editor finds floor3d cards in your dashboards, loads the model, detects rooms, names them, and places the card's lights, switches, fans, covers, media players, thermostats and locks into the room each one stands in. You review and edit.
+- **Four styles.** Standard, or the Neon, Blueprint and Day look themes of [floor3dx-card](https://github.com/FortranFour/floor3dx-card), each on its own stage colour.
+- **Any view angle.** Turn (Y), tilt (X) and roll (Z) the model in a live 3D preview in the editor. The picture is always an orthographic, true-scale projection.
 - **Sunlight (optional).** Shading and wall shadows follow the real sun across your house through the day, from your Home Assistant location and a north direction you set. Dawn and dusk turn warm, night turns a muted blue, and rooms with lights on glow after dark.
 - **Guest mode** (on by default): locks can only be locked, garage doors and gates only closed, alarms are read-only, TV volume is capped, thermostats can be limited to a range.
 
@@ -31,11 +33,29 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 
 1. **Model** — *Find floor3d cards in my dashboards* lists every floor3d-family card you can read; pick one (or two, e.g. house and detached garage — the second is placed beside the first). Or paste a model URL (`.glb`, `.gltf` or `.obj` + `.mtl`).
 2. **Rooms** — *Detect rooms from the model* finds the floor objects (`room_N_1`, as Sweet Home 3D exports them), names each room from the floor3d entity bound to that floor (e.g. `input_button.floor3d_kitchen` → *Kitchen*), and assigns the floor3d card's entities to the room they stand in. Tick *Also add sensors* first if you want temperatures, doors and windows too. Then rename rooms, change icons, add or remove entities, set labels, reorder. Rooms without a floor object (a porch, say) show as a pin on an anchor object.
-3. **Snapshot** — choose the view angle and tilt, then *Render snapshot*. Rendering runs in your browser (a few seconds to ~20 s for a large house) and the two images are saved in Home Assistant's image store. If you later change rooms, models or the view, the editor marks the snapshot *Out of date*.
+3. **Snapshot** — pick a style, set the view (open *Show 3D preview* and drag, or use the Turn / Tilt / Roll sliders), then *Render snapshot*. Rendering runs in your browser (a few seconds to ~20 s for a large house) and the two images are saved in Home Assistant's image store. If you later change rooms, models or the view, the editor marks the snapshot *Out of date*.
 4. **Sunlight** — optional; see below.
 5. **Display** — title, starting room, layout, guest-mode limits.
 
 > Rendering needs WebGL in the browser you edit from (any desktop browser). Guests never need it.
+
+## Styles
+
+![Standard, Neon, Blueprint and Day on the demo house](docs/styles.png)
+
+*Style* in the Snapshot section offers the standard clay look and the three look themes of floor3dx-card. Those themes come from NeonPlan 3D and NextFloor:
+
+- **Neon:** dark navy surfaces with glowing edge lines; *Edge colour* sets the glow (default `#37e0ff`).
+- **Blueprint:** shades of blue with pale edge lines.
+- **Day:** light grey surfaces with dark navy lines.
+
+Each theme recolours surfaces per pixel, so textures still show as pattern. Walls (`wall…` objects) and floors (`room…`, `floor…`) get their own tints. Bright, saturated colours keep their colour. The card shows the picture on the theme's stage colour; with sunlight on, the stage runs from its night colour to its day colour. If the floor3dx card you pick in *Find floor3d cards* has a `look.theme` or a `north`, the editor copies them in.
+
+## View and 3D preview
+
+![The editor's 3D preview](docs/preview.png)
+
+*Show 3D preview* loads the model in the editor, styled as it will render. Drag horizontally to **turn** (Y) and vertically to **tilt** (X). The **Roll** slider (Z) turns the picture about the view axis, and the scroll wheel zooms the preview only. *Reset view* returns to the default isometric view (turn 45°, tilt 52°, roll 0°), and *Straight down* gives a plan view. Whatever the angle, the snapshot is an orthographic projection: no perspective, so rooms keep their true proportions and taps land where they look. Nothing changes for guests until you press *Render snapshot*.
 
 ## Sunlight
 
@@ -66,8 +86,11 @@ models:
     place: east            # east | west | north | south | as-is
     rotate: 0
 view:
-  azimuth: 45              # camera direction, degrees
-  elevation: 52            # tilt, degrees
+  style: neon              # standard | neon | blueprint | day
+  accent: '#37e0ff'        # neon edge colour
+  azimuth: 45              # turn (Y), degrees
+  elevation: 52            # tilt (X), degrees; 90 looks straight down
+  roll: 0                  # roll (Z), degrees
   room_colors: false       # pastel floors instead of neutral
   edges: true
   hide: "^room_\\d+_2$|^Frame"            # ceilings and text frames
@@ -143,6 +166,7 @@ npm install
 npm run build            # dist/ (every file is a release asset)
 node dev/make-demo.mjs   # regenerate the demo home model
 node dev/test.mjs --demo # headless end-to-end test (editor → render → card → sunlight)
+node dev/style-test.mjs --demo  # each style rendered and screenshotted
 node dev/sun-test.mjs --demo --lat 47.6 --lon -122.3 --tz America/Los_Angeles   # screenshots through a day
 node dev/server.mjs      # then open http://127.0.0.1:8123/?fixture=demo
 ```
@@ -151,4 +175,4 @@ node dev/server.mjs      # then open http://127.0.0.1:8123/?fixture=demo
 
 ## Credits
 
-Built on [three.js](https://threejs.org). Sun position from the NOAA solar equations. Thanks to [adizanni/floor3d-card](https://github.com/adizanni/floor3d-card) and [levonisyas/floor3dpro-card](https://github.com/levonisyas/floor3dpro-card), whose model conventions this card reads. MIT licensed.
+Built on [three.js](https://threejs.org). The look themes are ported from [floor3dx-card](https://github.com/FortranFour/floor3dx-card)'s `look`, itself adapted from [NextFloor](https://github.com/therealMRBK/NextFloor) (MIT), after [NeonPlan 3D](https://github.com/Mastershort/neonplan3d). Sun position from the NOAA solar equations. Thanks to [adizanni/floor3d-card](https://github.com/adizanni/floor3d-card) and [levonisyas/floor3dpro-card](https://github.com/levonisyas/floor3dpro-card), whose model conventions this card reads. MIT licensed.

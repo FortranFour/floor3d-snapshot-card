@@ -3,7 +3,7 @@
  * only in the card editor (see snapshot.js, loaded on demand).
  */
 import { solarPosition, sunVector, northVector, compassName } from "./sun.js";
-import { decodeLight, shade, compose, nextUpdateMinutes } from "./sunlight.js";
+import { decodeLight, shade, compose, nextUpdateMinutes, phase } from "./sunlight.js";
 export const VERSION = typeof __VERSION__ !== "undefined" ? __VERSION__ : "dev";
 export const SUN_PREVIEW_EVENT = "floor3d-snapshot-sun-preview";
 
@@ -18,6 +18,7 @@ const icon = (name) => `<ha-icon icon="${esc(name)}" aria-hidden="true"></ha-ico
 const ACTIVE_DOMAINS = new Set(["light", "switch", "fan", "input_boolean", "media_player"]);
 const DEFAULT_ICONS = { light: "mdi:lightbulb-outline", switch: "mdi:toggle-switch-outline", fan: "mdi:fan", cover: "mdi:window-shutter", climate: "mdi:thermostat", media_player: "mdi:television", lock: "mdi:lock-outline", scene: "mdi:palette-outline", script: "mdi:script-text-outline", sensor: "mdi:eye-outline", binary_sensor: "mdi:checkbox-blank-circle-outline", input_boolean: "mdi:toggle-switch-outline", button: "mdi:gesture-tap-button", input_button: "mdi:gesture-tap-button", alarm_control_panel: "mdi:shield-home-outline", vacuum: "mdi:robot-vacuum" };
 const SENSITIVE_COVERS = new Set(["garage", "gate", "door"]);
+const mixHex = (a, b, t) => { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); const x = p(a), y = p(b); return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * t)).join(",")})`; };
 
 const STYLE = `
 :host{display:block;--f3s-blue:rgb(var(--rgb-primary-color,3,169,244));--f3s-ink:var(--primary-text-color,#233246);--f3s-muted:var(--secondary-text-color,#677587);--f3s-surface:var(--ha-card-background,var(--card-background-color,#fff));--f3s-line:rgba(var(--rgb-primary-text-color,33,33,33),.1);--f3s-amber:#dfac2a}
@@ -27,7 +28,7 @@ ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
 .layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:16px;align-items:start}:host(.stacked) .layout{grid-template-columns:1fr}
 .map{position:relative;width:min(100%,calc((100vh - 260px) * var(--aspect,1.2)));min-width:min(100%,280px);margin:0 auto;aspect-ratio:var(--aspect,1.2);-webkit-user-select:none;user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:default}.map.hovering{cursor:pointer}
 .map{isolation:isolate}.map img,.map canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}.map img,.map canvas.sun{-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}.map canvas.sun{mix-blend-mode:multiply;opacity:0;transition:opacity 2.4s ease}.map canvas.sun.show{opacity:1}.map.preview canvas.sun{transition-duration:.2s}
-.compass{position:absolute;left:4px;bottom:4px;width:30px;height:30px;border-radius:50%;border:1px solid var(--f3s-line);background:var(--f3s-surface);color:var(--f3s-muted);display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}.compass svg{width:24px;height:24px;transform:rotate(var(--north,0deg))}:host(.dark) .map img{filter:brightness(.8) contrast(1.05)}
+.compass{position:absolute;left:4px;bottom:4px;width:30px;height:30px;border-radius:50%;border:1px solid var(--f3s-line);background:var(--f3s-surface);color:var(--f3s-muted);display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}.compass svg{width:24px;height:24px;transform:rotate(var(--north,0deg))}:host(.dark) .map:not(.staged) img{filter:brightness(.8) contrast(1.05)}.map.staged{border-radius:14px;background:var(--f3s-stage)}
 .pins{position:absolute;inset:0}.pin{position:absolute;transform:translate(-15px,-50%);display:flex;align-items:center;gap:5px;height:30px;min-width:30px;padding:0 5px;border-radius:15px;border:1px solid var(--f3s-line);background:var(--f3s-surface);color:var(--f3s-muted);box-shadow:0 1px 4px rgba(0,0,0,.12);font-size:12px;font-weight:500;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s ease}.pin:before{content:"";position:absolute;inset:-8px}.pin ha-icon{width:18px;height:18px}.pin-name{display:none;padding-right:3px}.pin.on{color:var(--f3s-amber);border-color:rgba(223,172,42,.55)}.pin[aria-pressed=true]{background:var(--f3s-blue);border-color:var(--f3s-blue);color:#fff;z-index:2}.pin-count{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;border-radius:8px;background:var(--f3s-amber);color:#fff;font-size:10px;line-height:16px;text-align:center;padding:0 4px;font-weight:600}
 .pin.always,.map.labels .pin,.pin:focus-visible,.pin.hover{opacity:1;pointer-events:auto}.pin.flash{animation:f3s-flash 2.6s ease forwards}@keyframes f3s-flash{0%,65%{opacity:1}100%{opacity:0}}.pin.hover .pin-name,.pin.flash .pin-name,.map.labels .pin[aria-pressed=true] .pin-name{display:inline}
 .legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:8px;color:var(--f3s-muted);font-size:12px}.swatch{display:inline-block;width:11px;height:11px;border-radius:4px;margin-right:6px;vertical-align:-1px}.swatch.sel{background:rgba(var(--rgb-primary-color,3,169,244),.5)}.swatch.on{background:rgba(255,193,7,.5)}.toggle{margin-left:auto;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:3px 10px;border:1px solid var(--f3s-line);border-radius:10px;background:transparent;color:var(--f3s-muted);font-size:12px}.toggle[aria-pressed=true]{color:var(--f3s-blue);border-color:rgba(var(--rgb-primary-color,3,169,244),.5);background:rgba(var(--rgb-primary-color,3,169,244),.07)}.toggle ha-icon{width:16px;height:16px}
@@ -238,6 +239,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (this._mapEl && this._mapEl.dataset.src === snap.image) return this._mapEl;
     const el = document.createElement("div");
     el.className = "map"; el.dataset.src = snap.image;
+    if (snap.stage?.night) { el.classList.add("staged"); el.style.setProperty("--f3s-stage", snap.stage.night); }
     el.style.setProperty("--aspect", String(Number(snap.aspect) > 0 ? Number(snap.aspect) : 1.2));
     const sun = this._sunOn(snap);
     el.innerHTML = `<img alt="" decoding="async" draggable="false">${sun ? '<canvas class="sun" aria-hidden="true"></canvas><canvas class="sun" aria-hidden="true"></canvas>' : ""}<canvas class="tint" aria-hidden="true"></canvas>${sun && this._config.sun.compass !== false ? '<div class="compass" role="img"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l4 9h-8z" fill="#d9534f"/><path d="M8 12h8l-4 9z" fill="currentColor" opacity=".35"/><text x="12" y="13.6" font-size="5.2" text-anchor="middle" fill="#fff" font-family="sans-serif" font-weight="700">N</text></svg></div>' : ""}<div class="pins"></div>`;
@@ -368,6 +370,8 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const [a, b] = el.querySelectorAll("canvas.sun"); if (!a || !b) return;
     const next = a.classList.contains("show") ? b : a, prev = next === a ? b : a;
     compose(next.getContext("2d"), L, this._direct, elev, { strength: Number(cfg.strength ?? 0.6), lit });
+    const stage = this._snap()?.stage;     // a themed snapshot's stage runs from its night to its day colour
+    if (stage?.night && stage.day) el.style.setProperty("--f3s-stage", mixHex(stage.night, stage.day, phase(elev).day));
     next.classList.add("show"); prev.classList.remove("show");
   }
   _updateCompass(snap, north, pos) {

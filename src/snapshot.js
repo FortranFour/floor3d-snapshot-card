@@ -20,6 +20,10 @@ export const VIEW_DEFAULTS = {
   exposure: 0.95, env_intensity: 0.35, contrast: 1.08, saturate: 1.18,
   crop_pad: 0.012, pin_room: 26, jpeg_quality: 0.86, matte: "#ECE8E2",
   sunlight: false,   // also bake the lighting layer; the picture is lit evenly so the card can relight it
+  style: "standard", // standard | neon | blueprint | day (the floor3dx look themes)
+  accent: "#37e0ff", // neon edge colour
+  roll: 0,           // degrees, turns the picture about the view axis
+  keep_signal: true, walls: "wall", floors: "room, floor",
 };
 
 const ROOM_PALETTE = ["#F2C46D", "#9CC5A1", "#8FB8DE", "#E8A598", "#4FC99A", "#B9A6D9", "#8ED1CF", "#F0B8C8", "#C9D88A", "#B8C2CC", "#F4A97A", "#A9C7E8"];
@@ -159,10 +163,11 @@ class Session {
     return rooms;
   }
 
-  /** Render the snapshot. rooms: [{id, floors:[{model,object}], anchor?:{model,object}, pin_offset?:[dx,dy], color?}] */
-  async render({ view: viewIn = {}, rooms = [], onProgress = () => {} }) {
-    const cfg = { ...VIEW_DEFAULTS, ...viewIn };
-    const { scene, roots, renderer } = this;
+  /** Style the scene for a snapshot or the live preview: hide ceilings and hanging fixtures,
+   *  restyle materials (standard clay or a floor3dx look theme), add edge lines and lights.
+   *  Undo with _unstage(). */
+  async _stage(cfg, rooms, onProgress, renderer) {
+    const { scene, roots } = this;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = cfg.exposure;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -218,11 +223,17 @@ class Session {
     const shown = (o) => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
 
     onProgress("Styling…"); await tick();
+    const theme = THEME_INDEX[cfg.style] ?? -1;
+    const look = theme >= 0 ? new LookThemer(theme, cfg) : null;
+    if (look) {            // themes are flat colours: neutral lighting, no filmic curve (as in floor3dx)
+      renderer.toneMapping = THREE.NoToneMapping;
+      scene.environmentIntensity = 0.12;
+    }
     const clay = new THREE.Color(cfg.clay);
     const floorOf = new Map();
     rooms.forEach((room, k) => (room.floors || []).forEach((f) => {
       const o = this.find(f.model, f.object);
-      if (o) o.traverse((m) => { if (m.isMesh) floorOf.set(m, { k, color: cfg.room_colors ? (room.color || ROOM_PALETTE[k % ROOM_PALETTE.length]) : cfg.floor_color }); });
+      if (o) o.traverse((m) => { if (m.isMesh) floorOf.set(m, { k, color: cfg.room_colors ? (room.color || ROOM_PALETTE[k % ROOM_PALETTE.length]) : look ? null : cfg.floor_color }); });
     }));
     const clip = cfg.cut > 0 ? roots.map((r) => { const b = new THREE.Box3().setFromObject(r); return new THREE.Plane(new THREE.Vector3(0, -1, 0), b.min.y + (b.max.y - b.min.y) * cfg.cut); }) : null;
     const added = [];
@@ -233,8 +244,9 @@ class Session {
       const floor = floorOf.get(o);
       const next = mats.map((m) => {
         const c = m.clone();
-        if (floor) { c.color = new THREE.Color(floor.color); c.map = null; } else if (c.color) c.color.multiply(clay);
+        if (floor?.color) { c.color = new THREE.Color(floor.color); c.map = null; } else if (c.color && !look) c.color.multiply(clay);
         c.metalness = 0; c.roughness = Math.max(c.roughness ?? 1, 0.85);
+        if (look) look.apply(c, look.surfaceOf(o));
         if (clip) { c.clippingPlanes = [clip[ri]]; c.side = THREE.DoubleSide; }
         return c;
       });
@@ -244,11 +256,13 @@ class Session {
 
     if (cfg.edges) {
       onProgress("Tracing edges…"); await tick();
-      const lineMat = new THREE.LineBasicMaterial({ color: cfg.edge_color, transparent: true, opacity: cfg.edge_opacity, depthWrite: false });
+      const lineMat = look ? look.edgeMaterial() : new THREE.LineBasicMaterial({ color: cfg.edge_color, transparent: true, opacity: cfg.edge_opacity, depthWrite: false });
+      const tiny = look ? Math.max(...roots.map((r) => { const z = new THREE.Box3().setFromObject(r).getSize(new THREE.Vector3()); return Math.max(z.x, z.z); })) * 0.004 : 0;
       let n = 0;
       for (const r of roots) {
         const meshes = []; r.traverse((o) => { if (o.isMesh && shown(o)) meshes.push(o); });
         for (const o of meshes) {
+          if (look && look.skipEdges(o, tiny)) continue;
           const lm = lineMat.clone(); lm.clippingPlanes = (Array.isArray(o.material) ? o.material[0] : o.material).clippingPlanes || null;
           const lines = new THREE.LineSegments(creaseEdges(o.geometry, cfg.edge_angle), lm);
           o.add(lines); added.push(lines);
@@ -262,24 +276,65 @@ class Session {
     scene.traverse((o) => { if (o.isMesh && shown(o)) vis.expandByObject(o); });
     const center = vis.getCenter(new THREE.Vector3()), size = vis.getSize(new THREE.Vector3()), span = Math.max(size.x, size.z);
     // Sunlight mode: even, sun-at-noon lighting — the card adds direction and shadow later.
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xb7a58c, cfg.sunlight ? 1.9 : 0.9);
-    const sun = new THREE.DirectionalLight(0xfff3e0, cfg.sunlight ? 1.0 : 2.2);
+    // [hemisphere, directional] per style; sunlight mode lights evenly from overhead
+    const LIGHTS = { standard: [0.9, 2.2], neon: [0.6, 0.9], blueprint: [0.75, 1.1], day: [1.25, 1.5] };
+    const [hk, sk] = LIGHTS[look ? THEME_NAMES[look.index] : "standard"];
+    const hemi = new THREE.HemisphereLight(0xffffff, look ? 0x8090a8 : 0xb7a58c, cfg.sunlight ? hk * (look ? 1.7 : 2.1) : hk);
+    const sun = new THREE.DirectionalLight(0xfff3e0, cfg.sunlight ? sk * 0.45 : sk);
     sun.position.copy(center).addScaledVector(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(cfg.sunlight ? 8 : 35), THREE.MathUtils.degToRad(160)), span * 2);
     sun.target.position.copy(center);
     scene.add(hemi, sun, sun.target); added.push(hemi, sun, sun.target);
+    return { restore, added, pmrem, floorOf, clip, vis, center, span, look };
+  }
+  _unstage(st) {
+    for (const o of st.added) o.parent?.remove(o);
+    for (const [o, k, v] of st.restore.reverse()) o[k] = v;
+    st.pmrem.dispose();
+  }
+
+  /**
+   * Live preview on a canvas: the styled model under the snapshot's orthographic camera.
+   * Returns { setView(view), restyle(view, rooms), draw(), close() }. Close it before render().
+   */
+  async openPreview(canvas, { view = {}, rooms = [] } = {}) {
+    const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    let cfg = { ...VIEW_DEFAULTS, ...view, sunlight: false }, st = await this._stage(cfg, rooms, () => {}, r);
+    const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -st.span * 10, st.span * 10);
+    let zoom = 1, frame = 0;
+    const draw = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const w = canvas.clientWidth || 400, h = canvas.clientHeight || 300;
+        r.setSize(w, h, false);
+        orientCamera(cam, cfg, st.center, st.span);
+        fitCamera(cam, st.vis, 1.06 / zoom, w / h);
+        r.render(this.scene, cam);
+      });
+    };
+    draw();
+    return {
+      get stage() { return st.look ? st.look.stage() : null; },
+      setView: (v) => { cfg = { ...cfg, ...v }; draw(); },
+      zoom: (k) => { zoom = Math.min(6, Math.max(0.5, zoom * k)); draw(); },
+      restyle: async (v, rms = rooms) => { this._unstage(st); cfg = { ...VIEW_DEFAULTS, ...v, sunlight: false }; rooms = rms; st = await this._stage(cfg, rooms, () => {}, r); draw(); },
+      draw,
+      close: () => { cancelAnimationFrame(frame); this._unstage(st); r.dispose(); r.forceContextLoss?.(); },
+    };
+  }
+
+  /** Render the snapshot. rooms: [{id, floors:[{model,object}], anchor?:{model,object}, pin_offset?:[dx,dy], color?}] */
+  async render({ view: viewIn = {}, rooms = [], onProgress = () => {} }) {
+    const cfg = { ...VIEW_DEFAULTS, ...viewIn };
+    const { scene, renderer } = this;
+    const st = await this._stage(cfg, rooms, onProgress, renderer);
+    const { restore, added, pmrem, floorOf, clip, vis, center, span } = st;
 
     const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -span * 10, span * 10);
-    cam.position.copy(center).addScaledVector(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - cfg.elevation), THREE.MathUtils.degToRad(cfg.azimuth)), span * 3);
-    cam.lookAt(center); cam.updateMatrixWorld(true);
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const x of [vis.min.x, vis.max.x]) for (const y of [vis.min.y, vis.max.y]) for (const z of [vis.min.z, vis.max.z]) {
-      const p = new THREE.Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse);
-      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-    }
-    const w = (maxX - minX) * 1.08, h = (maxY - minY) * 1.08;
-    const H = cfg.height, W = Math.round(H * w / h);
-    cam.left = (minX + maxX) / 2 - w / 2; cam.right = (minX + maxX) / 2 + w / 2; cam.top = (minY + maxY) / 2 + h / 2; cam.bottom = (minY + maxY) / 2 - h / 2;
-    cam.updateProjectionMatrix();
+    orientCamera(cam, cfg, center, span);
+    const ext = fitCamera(cam, vis, 1.08);
+    const H = cfg.height, W = Math.round(H * ext.w / ext.h);
 
     onProgress("Rendering…"); await tick();
     renderer.setSize(W * cfg.supersample, H * cfg.supersample, false);
@@ -287,9 +342,22 @@ class Session {
     const full = document.createElement("canvas"); full.width = W; full.height = H;
     const fctx = full.getContext("2d", { willReadFrequently: true });
     fctx.imageSmoothingQuality = "high";
-    fctx.filter = `contrast(${cfg.contrast}) saturate(${cfg.saturate})`;
+    fctx.filter = st.look ? "none" : `contrast(${cfg.contrast}) saturate(${cfg.saturate})`;
     fctx.drawImage(renderer.domElement, 0, 0, W, H);
     fctx.filter = "none";
+    if (st.look && cfg.edges) {
+      // Edge layer on its own (surfaces write depth only), laid over again sharp and, for neon and
+      // blueprint, blurred as a glow: thin lines survive the downscale and read as lit.
+      const hidden = [];
+      scene.traverse((o) => { if (o.isMesh) for (const m of [o.material].flat()) if (m.colorWrite) { hidden.push(m); m.colorWrite = false; } });
+      renderer.setClearColor(0x000000, 0); renderer.render(scene, cam);
+      hidden.forEach((m) => { m.colorWrite = true; });
+      const glow = st.look.index !== 2;
+      fctx.globalCompositeOperation = glow ? "lighter" : "source-over";
+      if (glow) { fctx.filter = `blur(${Math.max(1.5, H / 600).toFixed(1)}px)`; fctx.globalAlpha = 0.9; fctx.drawImage(renderer.domElement, 0, 0, W, H); fctx.filter = "none"; }
+      fctx.globalAlpha = glow ? 0.7 : 0.55; fctx.drawImage(renderer.domElement, 0, 0, W, H);
+      fctx.globalAlpha = 1; fctx.globalCompositeOperation = "source-over";
+    }
 
     // Pins: floor bbox top-centre, or an anchor object's base for pin-only rooms.
     const pins = {};
@@ -337,7 +405,7 @@ class Session {
     let x0 = W, y0 = H, x1 = -1, y1 = -1;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (img[(y * W + x) * 4 + 3] > 10) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
     for (const [px, py] of Object.values(pins)) { x0 = Math.min(x0, px - cfg.pin_room); x1 = Math.max(x1, px + cfg.pin_room); y0 = Math.min(y0, py - cfg.pin_room); y1 = Math.max(y1, py + cfg.pin_room); }
-    const pad = Math.round(Math.max(W, H) * cfg.crop_pad);
+    const pad = Math.round(Math.max(W, H) * (st.look ? Math.max(cfg.crop_pad, 0.035) : cfg.crop_pad));
     x0 = Math.max(0, Math.floor(x0 - pad)); y0 = Math.max(0, Math.floor(y0 - pad));
     x1 = Math.min(W, Math.ceil(x1 + pad)); y1 = Math.min(H, Math.ceil(y1 + pad));
     const cw = x1 - x0, ch = y1 - y0;
@@ -345,7 +413,7 @@ class Session {
     // Picture: JPEG over a neutral matte (transparency comes from the mask).
     const pic = document.createElement("canvas"); pic.width = cw; pic.height = ch;
     const pctx = pic.getContext("2d");
-    pctx.fillStyle = cfg.matte; pctx.fillRect(0, 0, cw, ch);
+    pctx.fillStyle = st.look ? st.look.stage().night : cfg.matte; pctx.fillRect(0, 0, cw, ch);
     pctx.drawImage(full, x0, y0, cw, ch, 0, 0, cw, ch);
     // Mask + index: alpha = model coverage (anti-aliased), red = room code on visible floors.
     const idx = ictx.getImageData(x0, y0, cw, ch);
@@ -398,9 +466,7 @@ class Session {
     }
 
     // Restore the scene for further renders.
-    for (const o of added) o.parent?.remove(o);
-    for (const [o, k, v] of restore.reverse()) o[k] = v;
-    pmrem.dispose();
+    this._unstage(st);
 
     const toBlob = (canvas, type, q) => new Promise((resolve) => canvas.toBlob(resolve, type, q));
     const result = {
@@ -408,6 +474,7 @@ class Session {
       index: await toBlob(mask, "image/png"),
       ...(lightCanvas ? { light: await toBlob(lightCanvas, "image/png"), lighting: lightMeta(cam, W, H, light) } : {}),
       width: cw, height: ch, aspect: +(cw / ch).toFixed(4),
+      ...(st.look ? { style: cfg.style, stage: st.look.stage() } : {}),
       rooms: {},
     };
     rooms.forEach((room, k) => {
@@ -422,6 +489,99 @@ class Session {
     onProgress("Done.");
     return result;
   }
+}
+
+// ---- camera ------------------------------------------------------------------------
+/** Orthographic view: turn (Y, azimuth), tilt (X, elevation) and roll (Z), looking at `center`. */
+export function orientCamera(cam, cfg, center, span) {
+  const d = THREE.MathUtils.degToRad;
+  cam.rotation.set(-d(Number(cfg.elevation) || 0), d(Number(cfg.azimuth) || 0), d(Number(cfg.roll) || 0), "YXZ");
+  cam.position.copy(center).add(new THREE.Vector3(0, 0, 1).applyEuler(cam.rotation).multiplyScalar(span * 3));
+  cam.updateMatrixWorld(true);
+}
+/** Fit the camera's frustum to a box (×pad); with `aspect`, widen to that aspect. Returns extents. */
+export function fitCamera(cam, box, pad = 1.08, aspect = 0) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+    const p = new THREE.Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse);
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+  }
+  let w = (maxX - minX) * pad, h = (maxY - minY) * pad;
+  if (aspect) { if (w / h < aspect) w = h * aspect; else h = w / aspect; }
+  cam.left = (minX + maxX) / 2 - w / 2; cam.right = (minX + maxX) / 2 + w / 2; cam.top = (minY + maxY) / 2 + h / 2; cam.bottom = (minY + maxY) / 2 - h / 2;
+  cam.updateProjectionMatrix();
+  return { w, h };
+}
+
+// ---- look themes (from floor3dx-card's look.ts, itself adapted from NextFloor, MIT) ----
+const THEME_INDEX = { neon: 0, blueprint: 1, day: 2 };
+const THEME_NAMES = ["neon", "blueprint", "day"];
+/** Stage (background) colours, night and day, per theme. */
+export const STAGES = { neon: { night: "#0b1120", day: "#1a2c4e" }, blueprint: { night: "#1a4682", day: "#225696" }, day: { night: "#d6e0ee", day: "#f2f6fb" } };
+const EDGE_COLORS = [0x37e0ff, 0xcce6ff, 0x142b61];
+const LOOK_FUNCTION = `
+uniform int uTheme;
+uniform int uKeepSignal;
+uniform int uSurface; // 0 generic, 1 wall, 2 floor
+vec3 f3sThemed(vec3 c) {
+  float strongest = max(c.r, max(c.g, c.b));
+  float weakest = min(c.r, min(c.g, c.b));
+  float saturation = strongest > 0.0 ? (strongest - weakest) / strongest : 0.0;
+  float luma = dot(c, vec3(0.299, 0.587, 0.114));
+  bool signal = uKeepSignal == 1 && strongest > 0.45 && saturation > 0.45;
+  if (signal) return c;
+  if (uTheme == 0) {
+    vec3 base = uSurface == 1 ? vec3(0.075, 0.114, 0.19) : uSurface == 2 ? vec3(0.055, 0.086, 0.16) : vec3(0.09, 0.12, 0.2);
+    vec3 lit = uSurface == 1 ? vec3(0.08, 0.19, 0.25) : vec3(0.16, 0.22, 0.36);
+    vec3 m = mix(base, lit, clamp(luma * 1.4, 0.0, 1.0));
+    return mix(m, m * (c / max(strongest, 0.001)) * 1.6, 0.18);
+  }
+  if (uTheme == 1) return mix(vec3(0.04, 0.13, 0.3), vec3(0.2, 0.42, 0.75), clamp(luma * 1.6, 0.0, 1.0));
+  vec3 grey = vec3(clamp(0.62 + luma * 0.36, 0.0, 0.97));
+  return mix(grey, grey * (c / max(strongest, 0.001)), 0.12);
+}
+`;
+const prefixes = (v) => (Array.isArray(v) ? v : String(v || "").split(",")).map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+class LookThemer {
+  constructor(index, cfg) {
+    this.index = index; this.cfg = cfg;
+    this.walls = prefixes(cfg.walls); this.floors = prefixes(cfg.floors);
+  }
+  surfaceOf(o) {
+    for (let p = o; p; p = p.parent) {
+      const n = (p.name || "").toLowerCase(); if (!n) continue;
+      if (this.walls.some((x) => n.startsWith(x))) return 1;
+      if (this.floors.some((x) => n.startsWith(x))) return 2;
+    }
+    return 0;
+  }
+  apply(m, surface) {
+    m.flatShading = true;
+    if (m.shininess !== undefined) m.shininess = 0;
+    if (m.specular) m.specular.setRGB(0, 0, 0);
+    if (m.roughness !== undefined) m.roughness = 1;
+    const uniforms = { uTheme: { value: this.index }, uKeepSignal: { value: this.cfg.keep_signal === false ? 0 : 1 }, uSurface: { value: surface } };
+    m.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\n" + LOOK_FUNCTION)
+        .replace("#include <color_fragment>", "#include <color_fragment>\n  diffuseColor.rgb = f3sThemed(diffuseColor.rgb);");
+    };
+    m.customProgramCacheKey = () => `f3s-look-${this.index}-${surface}`;
+    m.needsUpdate = true;
+  }
+  edgeMaterial() {
+    const neon = this.index === 0, accent = /^#?[0-9a-f]{6}$/i.test(this.cfg.accent || "") ? this.cfg.accent : "#37e0ff";
+    return new THREE.LineBasicMaterial({ color: neon ? new THREE.Color(accent.startsWith("#") ? accent : `#${accent}`) : EDGE_COLORS[this.index], transparent: true, opacity: 0.85, depthWrite: false, blending: this.index === 2 ? THREE.NormalBlending : THREE.AdditiveBlending });
+  }
+  skipEdges(o, tiny) {
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (m?.transparent && m.opacity < 0.99) return true;
+    const b = o.geometry.boundingBox || (o.geometry.computeBoundingBox(), o.geometry.boundingBox);
+    const z = b.getSize(new THREE.Vector3()).multiply(o.getWorldScale(new THREE.Vector3()));
+    return Math.max(z.x, z.y, z.z) < tiny;
+  }
+  stage() { return STAGES[THEME_NAMES[this.index]]; }
 }
 
 // ---- lighting layer ------------------------------------------------------------
