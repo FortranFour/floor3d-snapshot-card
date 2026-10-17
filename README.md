@@ -41,6 +41,10 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 
 ![A day of sunlight on the demo house](docs/sunlight.png)
 
+The same on a real home (two floor3dx models, house and detached garage), mid-October:
+
+![A day of sunlight on a real home, from dawn to 10 pm](docs/sunlight-real.png)
+
 Tick **Simulate sunlight** in the editor's *Sunlight* section and render the snapshot again. The render then adds a small lighting image (typically 80–150 KB, downloaded only when sunlight is on). It holds each pixel's depth and surface direction, so the card can relight the picture in 2D. Guests' devices still run no 3D.
 
 - **Sun position** is calculated from Home Assistant's home location (*Settings → System → General*) and the viewer's clock. It updates every 10 minutes, every 4 minutes around sunrise and sunset, and every 30 minutes deep in the night, with a slow cross-fade.
