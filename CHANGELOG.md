@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — 2026-10-17
+
+- Fix HACS install: the release now ships the card's files as individual assets and `hacs.json` names `floor3d-snapshot-card.js`. 0.1.0 named its zip, so HACS registered the zip as the dashboard resource and the card never loaded.
+- Draco/Basis decoders now sit beside the card files (HACS downloads release assets into a single folder).
+
 ## 0.1.0 — 2026-10-17
 
 First release.

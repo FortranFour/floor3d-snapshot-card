@@ -17,7 +17,7 @@ Turn the 3D model behind a [floor3d-card](https://github.com/adizanni/floor3d-ca
 
 **HACS:** HACS → ⋮ → *Custom repositories* → add `https://github.com/FortranFour/floor3d-snapshot-card` as type **Dashboard**, then install *Floor3D Snapshot Card*. HACS adds the resource `/hacsfiles/floor3d-snapshot-card/floor3d-snapshot-card.js`.
 
-**Manual:** download `floor3d-snapshot-card.zip` from the [latest release](https://github.com/FortranFour/floor3d-snapshot-card/releases), unzip it into `/config/www/floor3d-snapshot-card/`, and add `/local/floor3d-snapshot-card/floor3d-snapshot-card.js` as a JavaScript module resource. Keep the other files from the zip beside it — the editor loads them on demand.
+**Manual:** download all files attached to the [latest release](https://github.com/FortranFour/floor3d-snapshot-card/releases) into `/config/www/floor3d-snapshot-card/` and add `/local/floor3d-snapshot-card/floor3d-snapshot-card.js` as a JavaScript module resource. Keep the other files beside it — the editor loads them on demand.
 
 ## Set up (visual editor)
 
@@ -106,7 +106,7 @@ A dashboard is not a security boundary. Give guests a non-administrator Home Ass
 
 ```bash
 npm install
-npm run build            # dist/ + floor3d-snapshot-card.zip
+npm run build            # dist/ (every file is a release asset)
 node dev/make-demo.mjs   # regenerate the demo home model
 node dev/test.mjs --demo # headless end-to-end test (editor → render → card)
 node dev/server.mjs      # then open http://127.0.0.1:8123/?fixture=demo

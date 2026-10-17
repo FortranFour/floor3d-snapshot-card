@@ -31,8 +31,8 @@ const tick = () => new Promise((resolve) => requestAnimationFrame(() => resolve(
 export async function createSession({ models, decoderBase, onProgress = () => {} }) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(1);
-  const draco = new DRACOLoader().setDecoderPath(new URL("draco/", decoderBase).href);
-  const ktx2 = new KTX2Loader().setTranscoderPath(new URL("basis/", decoderBase).href).detectSupport(renderer);
+  const draco = new DRACOLoader().setDecoderPath(new URL("./", decoderBase).href);
+  const ktx2 = new KTX2Loader().setTranscoderPath(new URL("./", decoderBase).href).detectSupport(renderer);
   const gltfLoader = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
 
   const scene = new THREE.Scene();

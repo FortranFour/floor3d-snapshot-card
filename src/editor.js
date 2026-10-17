@@ -245,7 +245,7 @@ ${snap ? `<div class="preview"><img src="${esc(snap.image)}" style="-webkit-mask
     if (this._session && this._sessionKey === key) return this._session;
     this._session?.dispose?.();
     const mod = await import("./snapshot.js");
-    this._session = await mod.createSession({ models, decoderBase: new URL("./decoders/", import.meta.url), onProgress: (p) => { this._progress = p; this._render(); } });
+    this._session = await mod.createSession({ models, decoderBase: new URL("./", import.meta.url), onProgress: (p) => { this._progress = p; this._render(); } });
     this._sessionKey = key;
     this._objectNames = this._session.objectNames();
     return this._session;

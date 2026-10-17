@@ -15,5 +15,5 @@ jobs:
       - run: npm run build
       - uses: softprops/action-gh-release@v2
         with:
-          files: floor3d-snapshot-card.zip
+          files: dist/*
           generate_release_notes: true
