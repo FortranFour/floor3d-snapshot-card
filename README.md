@@ -56,6 +56,9 @@ Each theme recolours surfaces per pixel, so textures still show as pattern. Wall
 
 *Wall transparency* in the Snapshot section (0–90 %) makes every wall object see-through by that amount: one global setting, no per-wall configuration. Walls are the objects whose names start with `wall` (Sweet Home 3D's `wall_0_1`, `wall_0_2`…); change the prefix under *Advanced → Wall objects* if your model names them differently. Wall outlines stay, so the plan keeps its shape.
 
+<img width="1340" height="940" alt="walls-your-house" src="https://github.com/user-attachments/assets/541546b7-47e1-4df8-b129-06f70baae06d" />
+
+
 From 30 % up, walls no longer block taps: a floor seen through a wall can be tapped, and its selected or "on" tint is drawn only as strongly as the wall lets it show. It works with every style and with sunlight.
 
 ## View and 3D preview
