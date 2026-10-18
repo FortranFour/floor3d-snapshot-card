@@ -13,6 +13,7 @@ Actual card created from existing floor3dx-card:
 - **Tap a floor, get its controls.** Each room's floor is the button. The selected room is washed in your theme color, rooms with something on glow amber, and a mouse hover names the room. Pins stay hidden so the picture stays clean (a **Labels** toggle shows them).
 - **Built from your floor3d card.** The visual editor finds floor3d cards in your dashboards, loads the model, detects rooms, names them, and places the card's lights, switches, fans, covers, media players, thermostats and locks into the room each one stands in. You review and edit.
 - **Four styles.** Standard, or the Neon, Blueprint and Day look themes of [floor3dx-card](https://github.com/FortranFour/floor3dx-card), each on its own stage colour.
+- **See-through walls.** One slider makes every wall transparent by the amount you choose, so rooms behind walls show and can be tapped.
 - **Any view angle.** Turn (Y), tilt (X) and roll (Z) the model in a live 3D preview in the editor. The picture is always an orthographic, true-scale projection.
 - **Sunlight (optional).** Shading and wall shadows follow the real sun across your house through the day, from your Home Assistant location and a north direction you set. Dawn and dusk turn warm, night turns a muted blue, and rooms with lights on glow after dark.
 - **Guest mode** (on by default): locks can only be locked, garage doors and gates only closed, alarms are read-only, TV volume is capped, thermostats can be limited to a range.
@@ -50,6 +51,12 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 - **Day:** light grey surfaces with dark navy lines.
 
 Each theme recolours surfaces per pixel, so textures still show as pattern. Walls (`wall…` objects) and floors (`room…`, `floor…`) get their own tints. Bright, saturated colours keep their colour. The card shows the picture on the theme's stage colour; with sunlight on, the stage runs from its night colour to its day colour. If the floor3dx card you pick in *Find floor3d cards* has a `look.theme` or a `north`, the editor copies them in.
+
+## Wall transparency
+
+*Wall transparency* in the Snapshot section (0–90 %) makes every wall object see-through by that amount: one global setting, no per-wall configuration. Walls are the objects whose names start with `wall` (Sweet Home 3D's `wall_0_1`, `wall_0_2`…); change the prefix under *Advanced → Wall objects* if your model names them differently. Wall outlines stay, so the plan keeps its shape.
+
+From 30 % up, walls no longer block taps: a floor seen through a wall can be tapped, and its selected or "on" tint is drawn only as strongly as the wall lets it show. It works with every style and with sunlight.
 
 ## View and 3D preview
 
@@ -91,6 +98,8 @@ view:
   azimuth: 45              # turn (Y), degrees
   elevation: 52            # tilt (X), degrees; 90 looks straight down
   roll: 0                  # roll (Z), degrees
+  wall_transparency: 40    # percent, 0–90; every wall object
+  walls: wall              # name prefix(es) of wall objects
   room_colors: false       # pastel floors instead of neutral
   edges: true
   hide: "^room_\\d+_2$|^Frame"            # ceilings and text frames

@@ -24,6 +24,7 @@ export const VIEW_DEFAULTS = {
   accent: "#37e0ff", // neon edge colour
   roll: 0,           // degrees, turns the picture about the view axis
   keep_signal: true, walls: "wall", floors: "room, floor",
+  wall_transparency: 0, // percent, 0–90: every wall object (name starts with a `walls` prefix) turns see-through
 };
 
 const ROOM_PALETTE = ["#F2C46D", "#9CC5A1", "#8FB8DE", "#E8A598", "#4FC99A", "#B9A6D9", "#8ED1CF", "#F0B8C8", "#C9D88A", "#B8C2CC", "#F4A97A", "#A9C7E8"];
@@ -237,9 +238,16 @@ class Session {
     }));
     const clip = cfg.cut > 0 ? roots.map((r) => { const b = new THREE.Box3().setFromObject(r); return new THREE.Plane(new THREE.Vector3(0, -1, 0), b.min.y + (b.max.y - b.min.y) * cfg.cut); }) : null;
     const added = [];
+    // Wall transparency: one global amount for every wall object.
+    const wallAlpha = 1 - Math.min(90, Math.max(0, Number(cfg.wall_transparency) || 0)) / 100;
+    const wallPrefixes = prefixes(cfg.walls);
+    const isWall = (o) => { for (let p = o; p; p = p.parent) { const n = (p.name || "").toLowerCase(); if (n && wallPrefixes.some((x) => n.startsWith(x))) return true; } return false; };
+    const seeThrough = new Set();
     roots.forEach((r, ri) => r.traverse((o) => {
       if (!o.isMesh) return;
       restore.push([o, "material", o.material]);
+      const glass = wallAlpha < 1 && isWall(o);
+      if (glass) seeThrough.add(o);
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       const floor = floorOf.get(o);
       const next = mats.map((m) => {
@@ -248,6 +256,7 @@ class Session {
         c.metalness = 0; c.roughness = Math.max(c.roughness ?? 1, 0.85);
         if (look) look.apply(c, look.surfaceOf(o));
         if (clip) { c.clippingPlanes = [clip[ri]]; c.side = THREE.DoubleSide; }
+        if (glass) { c.transparent = true; c.opacity = (c.opacity ?? 1) * wallAlpha; c.depthWrite = false; c.side = THREE.DoubleSide; }
         return c;
       });
       o.material = next.length === 1 ? next[0] : next;
@@ -284,7 +293,7 @@ class Session {
     sun.position.copy(center).addScaledVector(new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(cfg.sunlight ? 8 : 35), THREE.MathUtils.degToRad(160)), span * 2);
     sun.target.position.copy(center);
     scene.add(hemi, sun, sun.target); added.push(hemi, sun, sun.target);
-    return { restore, added, pmrem, floorOf, clip, vis, center, span, look };
+    return { restore, added, pmrem, floorOf, clip, vis, center, span, look, seeThrough, wallAlpha };
   }
   _unstage(st) {
     for (const o of st.added) o.parent?.remove(o);
@@ -381,6 +390,7 @@ class Session {
     scene.traverse((o) => {
       if (o.isLineSegments) { swap.push([o, "visible", o.visible]); o.visible = false; return; }
       if (!o.isMesh) return;
+      if (st.wallAlpha <= 0.7 && st.seeThrough.has(o)) { swap.push([o, "visible", o.visible]); o.visible = false; return; }
       swap.push([o, "material", o.material]);
       const floor = floorOf.get(o);
       if (floor) { const m = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }); m.color.setRGB((floor.k + 1) / 255, 0, 0, THREE.LinearSRGBColorSpace); o.material = m; }
@@ -396,7 +406,18 @@ class Session {
     const ic = document.createElement("canvas"); ic.width = W; ic.height = H;
     const ictx = ic.getContext("2d", { willReadFrequently: true });
     ictx.drawImage(indexRenderer.domElement, 0, 0);
-    indexRenderer.dispose();
+    // With see-through walls, a second pass with the walls solid marks the floor pixels that
+    // are only visible through a wall: the card tints those as faintly as the wall lets through.
+    let behind = null;
+    const glassWalls = st.wallAlpha <= 0.7 ? [...st.seeThrough] : [];
+    if (glassWalls.length) {
+      for (const o of glassWalls) { swap.push([o, "material", o.material]); o.visible = true; o.material = black; }
+      indexRenderer.render(scene, cam);
+      const bc = document.createElement("canvas"); bc.width = W; bc.height = H;
+      const bctx = bc.getContext("2d", { willReadFrequently: true }); bctx.drawImage(indexRenderer.domElement, 0, 0);
+      behind = bctx.getImageData(0, 0, W, H).data;
+    }
+    indexRenderer.dispose(); indexRenderer.forceContextLoss?.();
     for (const [o, k, v] of swap) o[k] = v;
     scene.environment = env;
     const light = cfg.sunlight ? (onProgress("Baking the lighting layer…"), await tick(), lightPass(scene, cam, W, H, vis)) : null;
@@ -428,7 +449,12 @@ class Session {
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && x + dx >= 0 && y + dy >= 0 && x + dx < cw && y + dy < ch && codes[(y + dy) * cw + x + dx] === v) same++;
       if (same < 3) codes[i] = 0;
     }
-    for (let i = 0; i < cw * ch; i++) { const a = alpha[i * 4 + 3]; d[i * 4] = codes[i] && a > 200 ? codes[i] : 0; d[i * 4 + 1] = 0; d[i * 4 + 2] = 0; d[i * 4 + 3] = a; }
+    for (let i = 0; i < cw * ch; i++) {
+      const a = alpha[i * 4 + 3], code = codes[i] && a > 200 ? codes[i] : 0;
+      // green = this floor pixel is seen through a wall
+      const j = (((i / cw) | 0) + y0) * W + (i % cw) + x0;
+      d[i * 4] = code; d[i * 4 + 1] = code && behind && behind[j * 4] !== code ? 255 : 0; d[i * 4 + 2] = 0; d[i * 4 + 3] = a;
+    }
     // Floor-room pins go on the room's visible floor: the coded pixel nearest the
     // centroid of its visible area (thin or L-shaped rooms keep their pin inside).
     const sum = new Map();
@@ -476,6 +502,7 @@ class Session {
       ...(lightCanvas ? { light: await toBlob(lightCanvas, "image/png"), lighting: lightMeta(cam, W, H, light) } : {}),
       width: cw, height: ch, aspect: +(cw / ch).toFixed(4),
       ...(st.look ? { style: cfg.style, stage: st.look.stage() } : {}),
+      ...(st.wallAlpha < 1 ? { wall_alpha: +st.wallAlpha.toFixed(2) } : {}),
       rooms: {},
     };
     rooms.forEach((room, k) => {

@@ -149,9 +149,12 @@ ${v.style && v.style !== "standard" ? '<p class="note">The floor3dx-card look th
 <div class="row"><label>Turn (Y): <span data-unit="°">${esc(v.azimuth ?? 45)}°</span><input type="range" min="0" max="359" step="1" data-field="view.azimuth" data-num data-view="azimuth" value="${esc(v.azimuth ?? 45)}" data-key="va"></label><label>Tilt (X): <span data-unit="°">${esc(v.elevation ?? 52)}°</span><input type="range" min="5" max="90" step="1" data-field="view.elevation" data-num data-view="elevation" value="${esc(v.elevation ?? 52)}" data-key="ve"></label><label>Roll (Z): <span data-unit="°">${esc(v.roll ?? 0)}°</span><input type="range" min="-180" max="180" step="1" data-field="view.roll" data-num data-view="roll" value="${esc(v.roll ?? 0)}" data-key="vr"></label></div>
 <div class="row"><button data-act="preview" ${!c.models.length ? "disabled" : ""}>${this._previewOpen ? "Hide 3D preview" : "Show 3D preview"}</button>${this._previewOpen ? '<button data-act="view-reset">Reset view</button><button data-act="view-top">Straight down</button>' : ""}</div>
 ${this._previewOpen ? '<div class="pv-slot"></div><p class="note">Drag to turn and tilt, scroll to zoom the preview. Nothing is saved until you render the snapshot.</p>' : ""}
+<div class="row"><label>Wall transparency: <span data-unit="%">${esc(v.wall_transparency ?? 0)}%</span><input type="range" min="0" max="90" step="5" data-field="view.wall_transparency" data-num value="${esc(v.wall_transparency ?? 0)}" data-key="vwt"></label></div>
+${Number(v.wall_transparency) > 0 ? `<p class="note">Every wall object (name starting with <code>${esc(v.walls ?? "wall")}</code>) is drawn see-through${Number(v.wall_transparency) >= 30 ? "; floors behind walls can be tapped" : ""}.</p>` : ""}
 <div class="row"><label class="check"><input type="checkbox" data-field="view.room_colors" data-bool ${v.room_colors ? "checked" : ""}>Pastel room floors</label><label class="check"><input type="checkbox" data-field="view.edges" data-bool data-default-true ${v.edges !== false ? "checked" : ""}>Outline edges</label></div>
 <details><summary>Advanced</summary><div class="body">
 <label>Hide objects matching (regex)<input type="text" data-field="view.hide" value="${esc(v.hide ?? "^room_\\d+_2$|^Frame")}" data-key="vh"></label>
+<label>Wall objects (name prefixes, comma-separated)<input type="text" data-field="view.walls" value="${esc(v.walls ?? "wall")}" data-key="vw"></label>
 <label>Hanging fixtures to hide (regex)<input type="text" data-field="view.fixture_names" value="${esc(v.fixture_names ?? "^fan_|^Fluorescent_strip")}" data-key="vf"></label>
 <div class="row"><label>Image height (px)<input type="number" min="500" max="2400" step="100" data-field="view.height" data-num value="${esc(v.height ?? 1000)}" data-key="vhh"></label><label>Storage<select data-field="storage" data-key="vs"><option value="upload" ${store === "upload" ? "selected" : ""}>Home Assistant image store</option><option value="embed" ${store === "embed" ? "selected" : ""}>Embed in this dashboard</option></select></label></div>
 </div></details>
@@ -205,7 +208,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       if (el.id === "sun-preview") return this._preview(Number(el.value));
       if (el.dataset.view && this._pv) this._pv.setView({ [el.dataset.view]: Number(el.value) });
       const l = el.closest("label"), unit = l?.querySelector("[data-unit]");
-      if (unit) unit.textContent = unit.dataset.unit === "%" ? `${Math.round(el.value * 100)}%` : `${el.value}${unit.dataset.unit}`;
+      if (unit) unit.textContent = el.dataset.pct !== undefined ? `${Math.round(el.value * 100)}%` : `${el.value}${unit.dataset.unit}`;
       else if (l) l.firstChild.textContent = l.firstChild.textContent.replace(/[\d.]+°/, `${el.value}°`);
     });
     root.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id?.match(/^(new-model|ent-|floor-)/)) { e.preventDefault(); e.target.closest(".row")?.querySelector("button")?.click(); } });
@@ -217,6 +220,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     if (el.dataset.num !== undefined) value = value === "" ? undefined : Number(value);
     if (typeof value === "string") value = value.trim();
     if (path === "view.style" && value === "standard") value = "";
+    if (path === "view.wall_transparency" && value === 0) value = undefined;
     const keys = path.split("."), last = keys.pop();
     let o = this._config;
     keys.forEach((k, n) => { const next = keys[n + 1] ?? last; o[k] ??= /^\d+$/.test(next) ? [] : {}; o = o[k]; });
@@ -438,7 +442,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
         image = a.url; index = b.url; ids = { image_id: a.id, index_id: b.id };
         if (result.light) { const l = await this._upload(result.light, "floor3d-snapshot-light.png"); light = l.url; ids.light_id = l.id; }
       }
-      c.snapshot = { image, index, ...(light ? { light, lighting: result.lighting } : {}), ...(result.stage ? { style: result.style, stage: result.stage } : {}), ...ids, aspect: result.aspect, width: result.width, height: result.height, rooms: result.rooms, key: snapshotKey(c) };
+      c.snapshot = { image, index, ...(light ? { light, lighting: result.lighting } : {}), ...(result.stage ? { style: result.style, stage: result.stage } : {}), ...(result.wall_alpha ? { wall_alpha: result.wall_alpha } : {}), ...ids, aspect: result.aspect, width: result.width, height: result.height, rooms: result.rooms, key: snapshotKey(c) };
       for (const id of [old?.image_id, old?.index_id, old?.light_id]) if (id) this._hass.callWS({ type: "image/delete", image_id: id }).catch(() => {});
       const kb = Math.round((result.image.size + result.index.size) / 1024), lkb = result.light ? Math.round(result.light.size / 1024) : 0;
       const unplaced = c.rooms.filter((r) => !result.rooms[r.id]?.pin).map((r) => r.name || r.id);

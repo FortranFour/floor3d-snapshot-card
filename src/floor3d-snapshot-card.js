@@ -275,12 +275,12 @@ export class Floor3dSnapshotCard extends HTMLElement {
       const px = cx.getImageData(0, 0, cv.width, cv.height).data;
       const ids = this._config.rooms.map((r) => r.id), byCode = new Map();
       for (const [id, r] of Object.entries(snap.rooms)) if (ids.includes(id) && Number(r?.code)) byCode.set(Number(r.code), ids.indexOf(id) + 1);
-      const codes = new Uint8Array(cv.width * cv.height);
-      for (let i = 0, p = 0; p < px.length; i++, p += 4) if (px[p + 3] > 200 && px[p]) codes[i] = byCode.get(px[p]) || 0;
+      const codes = new Uint8Array(cv.width * cv.height), behind = new Uint8Array(cv.width * cv.height);
+      for (let i = 0, p = 0; p < px.length; i++, p += 4) if (px[p + 3] > 200 && px[p]) { codes[i] = byCode.get(px[p]) || 0; behind[i] = px[p + 1] > 127 ? 1 : 0; }
       // The tint canvas is half size: plenty for a soft wash, quarter of the work.
-      const w = Math.ceil(cv.width / 2), h = Math.ceil(cv.height / 2), half = new Uint8Array(w * h);
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) half[y * w + x] = codes[(y * 2) * cv.width + x * 2];
-      this._index = { w: cv.width, h: cv.height, codes, ids, tw: w, th: h, half };
+      const w = Math.ceil(cv.width / 2), h = Math.ceil(cv.height / 2), half = new Uint8Array(w * h), halfBehind = new Uint8Array(w * h);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = (y * 2) * cv.width + x * 2; half[y * w + x] = codes[s]; halfBehind[y * w + x] = behind[s]; }
+      this._index = { w: cv.width, h: cv.height, codes, ids, tw: w, th: h, half, halfBehind };
       const t = el.querySelector("canvas.tint"); t.width = w; t.height = h;
       this._tintKey = ""; this._sunKey = ""; this._paint();
     };
@@ -311,12 +311,13 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const sel = ix.ids.indexOf(this._room) + 1, hov = this._hoverRoom ? ix.ids.indexOf(this._hoverRoom) + 1 : -1;
     const lit = new Uint8Array(ix.ids.length + 1); ix.ids.forEach((id, i) => { if (on.includes(id)) lit[i + 1] = 1; });
     const ctx = cv.getContext("2d"), img = ctx.createImageData(ix.tw, ix.th), d = img.data, c = ix.half;
+    const through = 1 - (Number(this._snap()?.wall_alpha) || 1);   // how much a see-through wall lets through
     for (let i = 0; i < c.length; i++) {
       const v = c[i]; if (!v) continue;
-      const o = i * 4;
-      if (v === sel) { d[o] = pr; d[o + 1] = pg; d[o + 2] = pb; d[o + 3] = 120; }
-      else if (v === hov) { d[o] = pr; d[o + 1] = pg; d[o + 2] = pb; d[o + 3] = 55; }
-      else if (lit[v]) { d[o] = 255; d[o + 1] = 193; d[o + 2] = 7; d[o + 3] = 105; }
+      const o = i * 4, k = ix.halfBehind[i] ? through : 1;
+      if (v === sel) { d[o] = pr; d[o + 1] = pg; d[o + 2] = pb; d[o + 3] = 120 * k; }
+      else if (v === hov) { d[o] = pr; d[o + 1] = pg; d[o + 2] = pb; d[o + 3] = 55 * k; }
+      else if (lit[v]) { d[o] = 255; d[o + 1] = 193; d[o + 2] = 7; d[o + 3] = 105 * k; }
     }
     ctx.putImageData(img, 0, 0);
   }

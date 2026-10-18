@@ -175,6 +175,22 @@ await waitEd(() => !window.harness.editor._busy && Array.isArray(window.harness.
 await page.waitForTimeout(300);
 const after = await page.evaluate(() => ({ chips: window.harness.card.shadowRoot.querySelectorAll(".chip").length, pin: !!window.harness.card.shadowRoot.querySelector('.pin[data-room="outdoor"]') }));
 check(after.pin && after.chips === 0, "anchored room gets a pin on the map", JSON.stringify(after));
+// 8. global wall transparency
+await page.evaluate(() => { const i = window.harness.editor.shadowRoot.querySelector('input[data-field="view.wall_transparency"]'); i.value = "50"; i.dispatchEvent(new Event("change", { bubbles: true })); });
+check((await page.evaluate(() => window.harness.getConfig().view.wall_transparency)) === 50, "wall transparency slider writes view.wall_transparency");
+await clickEd('[data-act="render"]');
+await waitEd(() => !window.harness.editor._busy && window.harness.getConfig().snapshot?.wall_alpha === 0.5, 900000);
+await page.waitForFunction(() => window.harness.card._index?.halfBehind, null, { timeout: 30000 });
+const behindPx = await page.evaluate(() => window.harness.card._index.halfBehind.reduce((a, b) => a + b, 0));
+check(behindPx > 0, "floors seen through walls are marked in the room index", `${behindPx} px`);
+let hits3 = 0; const wsnap = await page.evaluate(() => window.harness.getConfig().snapshot);
+for (const r of rooms) {
+  const p = wsnap.rooms[r.id].pin, b = await page.evaluate(() => { const b = window.harness.card.shadowRoot.querySelector(".map").getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; });
+  await page.mouse.click(b.x + p[0] / 100 * b.w, b.y + p[1] / 100 * b.h + 3); await page.waitForTimeout(120);
+  if ((await page.evaluate(() => window.harness.card._room)) === r.id) hits3++;
+}
+check(hits3 >= rooms.length - 1, "with see-through walls, tapping each floor still selects it", `${hits3}/${rooms.length}`);
+await page.locator("#card").screenshot({ path: `${shots}/card-walls.png` });
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);

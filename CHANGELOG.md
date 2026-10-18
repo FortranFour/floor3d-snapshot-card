@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 — 2026-10-18
+
+- **Wall transparency**: one global slider (0–90 %) makes every wall object see-through. From 30 % up, floors behind walls can be tapped, and their tints are drawn as faintly as the wall lets them through (marked in the room index). Works with every style, the 3D preview and sunlight.
+- *Advanced → Wall objects*: the name prefix(es) that identify walls (default `wall`), shared with the look themes.
+
 ## 0.3.1 — 2026-10-17
 
 - A room with no floor object and no pin anchor (an "Outdoor Lighting" group, say) no longer disappears: the card lists it as a button under the map, and the editor warns about it, both in the room and after rendering.
