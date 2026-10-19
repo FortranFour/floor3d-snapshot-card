@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 — 2026-10-19
+
+- Fix: with *Room buttons under the map* set to all rooms, the row of buttons widened the map column beyond the card, cutting off the map in narrow places such as the card editor's preview. The row now scrolls sideways within the card.
+- Editor: the *Room buttons under the map* choices read "Rooms the map can't show" (default), "All rooms" and "Never".
+
 ## 0.4.0 — 2026-10-18
 
 - **Wall transparency**: one global slider (0–90 %) makes every wall object see-through. From 30 % up, floors behind walls can be tapped, and their tints are drawn as faintly as the wall lets them through (marked in the room index). Works with every style, the 3D preview and sunlight.

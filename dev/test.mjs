@@ -191,6 +191,12 @@ for (const r of rooms) {
 }
 check(hits3 >= rooms.length - 1, "with see-through walls, tapping each floor still selects it", `${hits3}/${rooms.length}`);
 await page.locator("#card").screenshot({ path: `${shots}/card-walls.png` });
+// 9. room buttons under the map never widen the card
+await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); c.room_list = "always"; window.harness.setConfig(c); });
+await page.waitForTimeout(400);
+const fit = await page.evaluate(() => { const s = window.harness.card.shadowRoot, card = s.querySelector("ha-card").getBoundingClientRect().width, map = s.querySelector(".map").getBoundingClientRect().width; return { card: Math.round(card), map: Math.round(map), chips: s.querySelectorAll(".chip").length }; });
+check(fit.chips === rooms.length + 1 && fit.map <= fit.card, "all room buttons fit under the map without widening the card", JSON.stringify(fit));
+await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); delete c.room_list; window.harness.setConfig(c); });
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);
