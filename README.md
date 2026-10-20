@@ -56,6 +56,8 @@ Each theme recolours surfaces per pixel, so textures still show as pattern. Wall
 
 A floor3d card often shows sensor values and pictures on flat panels in the model (`type3d: text` and `type3d: image`). In a static snapshot those are blank frames, so the card hides them: *Find floor3d cards* records, per model, the objects the card binds as text or pictures, and the render hides each one (resolved as floor3d does, by the first object of that name) together with unused spares beside it, i.e. flat objects of the same size and name family, such as the empty slots in a stack of label frames. Untick *Hide the floor3d card's text and picture panels* in the Snapshot section to keep them. *Hide objects matching* (Advanced) still hides anything else by name, in every model.
 
+**Edge lines without the seams.** An exported model has lines that are not outlines: a straight wall exported in segments shows a joint where their end faces meet; a wall with a window is built from overlapping pieces (full height either side, one under the sill, one over the lintel) and shows a vertical line under each sill and over each lintel; two rooms' floors meet along a border no wall stands on. *No lines on wall seams and room borders* (on by default, in the Snapshot section next to *Outline edges*) drops those: edges are cut where other vertices lie on them, and each part is judged on its own, so a face pressed against another piece counts as hidden there and a surface that continues on the far side means no outline, while jambs, sills, corners and object contours keep theirs. Walls and floors are told apart by the *Wall objects* and *Floor objects* prefixes (Advanced). The same rule as floor3dx-card's `look.edge_skip: seams, floors`.
+
 ## Wall transparency
 
 *Wall transparency* in the Snapshot section (0–90 %) makes every wall object see-through by that amount: one global setting, no per-wall configuration. Walls are the objects whose names start with `wall` (Sweet Home 3D's `wall_0_1`, `wall_0_2`…); change the prefix under *Advanced → Wall objects* if your model names them differently. Wall outlines stay, so the plan keeps its shape.
@@ -183,6 +185,7 @@ npm install
 npm run build            # dist/ (every file is a release asset)
 node dev/make-demo.mjs   # regenerate the demo home model
 node dev/test.mjs --demo # headless end-to-end test (editor → render → card → sunlight)
+node dev/edges-test.mjs  # edge-line rules on a hand-built scene (no browser)
 node dev/style-test.mjs --demo  # each style rendered and screenshotted
 node dev/sun-test.mjs --demo --lat 47.6 --lon -122.3 --tz America/Los_Angeles   # screenshots through a day
 node dev/server.mjs      # then open http://127.0.0.1:8123/?fixture=demo

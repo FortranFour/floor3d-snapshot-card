@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 — 2026-10-20
+
+- **No lines on wall seams and room borders** (on by default). The outline pass no longer draws the joint between two segments of one straight wall, the vertical lines under a window sill and over a lintel where Sweet Home 3D built the wall from overlapping pieces, or the border between two rooms' floors. Edges are cut where other vertices lie on them and each part is judged on its own: a face pressed against a face of another piece is not a visible face there, and a surface continuing on the far side means no outline. Jambs, sills, lintels, reveals, corners and object contours keep their lines. Ported from floor3dx-card 1.7.3 (`look.edge_skip: seams, floors`); `src/edges.js`, unit test `node dev/edges-test.mjs`. Switch in the Snapshot section; `view.edge_joints: false` restores the previous lines.
+
 ## 0.5.0 — 2026-10-20
 
 - **Text and picture panels hidden per model.** *Find floor3d cards* records the objects each floor3d card binds as `type3d: text` or `image`. The render hides them (first object of each name, as floor3d resolves it) and unused spares beside them, meaning flat objects of the same size and name family. A model whose panels aren't named `Frame…` no longer keeps blank frames in the snapshot, and objects that share a name elsewhere in the model are left alone. Running *Find floor3d cards* again refreshes the lists for models already added. Switch: *Hide the floor3d card's text and picture panels* (on by default).

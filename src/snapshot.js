@@ -10,12 +10,14 @@ import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { nearestNormal } from "./sun.js";
+import { buildEdges } from "./edges.js";
 
 export const VIEW_DEFAULTS = {
   azimuth: 45, elevation: 52, width: 1600, height: 1000, supersample: 2,
   hide: "^room_\\d+_2$|^Frame", auto_ceiling: true, ceiling_band: 0.7,
   fixture_band: 0.55, fixture_mesh_band: 0.62, fixture_names: "^fan_|^Fluorescent_strip",
   cut: 0, edges: true, edge_angle: 35, edge_color: "#4a4038", edge_opacity: 0.32,
+  edge_joints: true, // no line where a wall was exported in pieces or two rooms' floors meet (floor3dx-card 1.7.3)
   clay: "#EFE7DC", floor_color: "#E6E0D6", room_colors: false,
   exposure: 0.95, env_intensity: 0.35, contrast: 1.08, saturate: 1.18,
   crop_pad: 0.012, pin_room: 26, jpeg_quality: 0.86, matte: "#ECE8E2",
@@ -270,13 +272,15 @@ class Session {
       onProgress("Tracing edges…"); await tick();
       const lineMat = look ? look.edgeMaterial() : new THREE.LineBasicMaterial({ color: cfg.edge_color, transparent: true, opacity: cfg.edge_opacity, depthWrite: false });
       const tiny = look ? Math.max(...roots.map((r) => { const z = new THREE.Box3().setFromObject(r).getSize(new THREE.Vector3()); return Math.max(z.x, z.z); })) * 0.004 : 0;
+      const wallP = prefixes(cfg.walls), floorP = prefixes(cfg.floors);
+      const classOf = (o) => { for (let p = o; p; p = p.parent) { const nm = (p.name || "").toLowerCase(); if (!nm) continue; if (wallP.some((x) => nm.startsWith(x))) return 1; if (floorP.some((x) => nm.startsWith(x))) return 2; } return 0; };
       let n = 0;
       for (const r of roots) {
-        const meshes = []; r.traverse((o) => { if (o.isMesh && shown(o)) meshes.push(o); });
-        for (const o of meshes) {
-          if (look && look.skipEdges(o, tiny)) continue;
+        const meshes = []; r.traverse((o) => { if (o.isMesh && shown(o) && !(look && look.skipEdges(o, tiny))) meshes.push(o); });
+        const geometries = buildEdges(meshes, { angle: cfg.edge_angle, joints: cfg.edge_joints !== false, classOf });
+        for (const [o, g] of geometries) {
           const lm = lineMat.clone(); lm.clippingPlanes = (Array.isArray(o.material) ? o.material[0] : o.material).clippingPlanes || null;
-          const lines = new THREE.LineSegments(creaseEdges(o.geometry, cfg.edge_angle), lm);
+          const lines = new THREE.LineSegments(g, lm);
           o.add(lines); added.push(lines);
           if (++n % 300 === 0) await tick();
         }
@@ -757,41 +761,3 @@ function distanceToFloor(tris, x, z) {
   return best;
 }
 
-/** Crease/outline edges that ignore triangle winding (no diagonals on flat faces). */
-function creaseEdges(geom, angleDeg) {
-  const pos = geom.attributes.position, idx = geom.index ? geom.index.array : null;
-  const triCount = (idx ? idx.length : pos.count) / 3;
-  const thr = Math.cos(THREE.MathUtils.degToRad(angleDeg));
-  if (!geom.boundingBox) geom.computeBoundingBox();
-  const q = Math.max(geom.boundingBox.getSize(new THREE.Vector3()).length() * 1e-5, 1e-6);
-  const ids = new Map(), pts = [];
-  const vid = (i) => {
-    const k = `${Math.round(pos.getX(i) / q)},${Math.round(pos.getY(i) / q)},${Math.round(pos.getZ(i) / q)}`;
-    let v = ids.get(k);
-    if (v === undefined) { v = pts.length; ids.set(k, v); pts.push(new THREE.Vector3().fromBufferAttribute(pos, i)); }
-    return v;
-  };
-  const edges = new Map();
-  const n = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
-  for (let t = 0; t < triCount; t++) {
-    const v = [vid(idx ? idx[3 * t] : 3 * t), vid(idx ? idx[3 * t + 1] : 3 * t + 1), vid(idx ? idx[3 * t + 2] : 3 * t + 2)];
-    if (v[0] === v[1] || v[1] === v[2] || v[0] === v[2]) continue;
-    n.crossVectors(e1.subVectors(pts[v[2]], pts[v[1]]), e2.subVectors(pts[v[0]], pts[v[1]]));
-    if (!n.lengthSq()) continue;
-    n.normalize();
-    for (const [x, y] of [[v[0], v[1]], [v[1], v[2]], [v[2], v[0]]]) {
-      const k = x < y ? x * 4294967296 + y : y * 4294967296 + x;
-      const e = edges.get(k);
-      if (!e) edges.set(k, { x, y, normals: [n.clone()] }); else e.normals.push(n.clone());
-    }
-  }
-  const out = [];
-  for (const e of edges.values()) {
-    let draw = e.normals.length === 1;
-    for (let i = 0; !draw && i < e.normals.length; i++) for (let j = i + 1; j < e.normals.length; j++) if (Math.abs(e.normals[i].dot(e.normals[j])) < thr) { draw = true; break; }
-    if (draw) out.push(pts[e.x].x, pts[e.x].y, pts[e.x].z, pts[e.y].x, pts[e.y].y, pts[e.y].z);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(out, 3));
-  return g;
-}
