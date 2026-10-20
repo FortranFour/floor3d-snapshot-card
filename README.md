@@ -52,6 +52,10 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 
 Each theme recolours surfaces per pixel, so textures still show as pattern. Walls (`wall…` objects) and floors (`room…`, `floor…`) get their own tints. Bright, saturated colours keep their colour. The card shows the picture on the theme's stage colour; with sunlight on, the stage runs from its night colour to its day colour. If the floor3dx card you pick in *Find floor3d cards* has a `look.theme` or a `north`, the editor copies them in.
 
+## Text and picture panels
+
+A floor3d card often shows sensor values and pictures on flat panels in the model (`type3d: text` and `type3d: image`). In a static snapshot those are blank frames, so the card hides them: *Find floor3d cards* records, per model, the objects the card binds as text or pictures, and the render hides each one (resolved as floor3d does, by the first object of that name) together with unused spares beside it, i.e. flat objects of the same size and name family, such as the empty slots in a stack of label frames. Untick *Hide the floor3d card's text and picture panels* in the Snapshot section to keep them. *Hide objects matching* (Advanced) still hides anything else by name, in every model.
+
 ## Wall transparency
 
 *Wall transparency* in the Snapshot section (0–90 %) makes every wall object see-through by that amount: one global setting, no per-wall configuration. Walls are the objects whose names start with `wall` (Sweet Home 3D's `wall_0_1`, `wall_0_2`…); change the prefix under *Advanced → Wall objects* if your model names them differently. Wall outlines stay, so the plan keeps its shape.
@@ -92,6 +96,7 @@ title: Our Home
 subtitle: Tap a room on the map to see its controls.
 models:
   - url: /local/floor3d/house.glb
+    panels: [1_13, 1_15, 1_24]   # written by "Find floor3d cards": its text/picture objects
   - url: /local/floor3d/garage.glb
     place: east            # east | west | north | south | as-is
     rotate: 0

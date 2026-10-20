@@ -17,7 +17,7 @@ const PLACES = [["east", "East of first model"], ["west", "West"], ["north", "No
 
 /** The part of the configuration a snapshot depends on. */
 export const snapshotKey = (config) => hash({
-  models: (config.models || []).map(({ url, mtl, place, offset, rotate, scale }) => ({ url, mtl, place, offset, rotate, scale })),
+  models: (config.models || []).map(({ url, mtl, place, offset, rotate, scale, panels }) => ({ url, mtl, place, offset, rotate, scale, panels })),
   view: config.view || {},
   ...(config.sun?.enabled ? { sun: true } : {}),
   rooms: (config.rooms || []).map(({ id, floors, anchor, pin_offset, color }) => ({ id, floors, anchor, pin_offset, color })),
@@ -151,6 +151,7 @@ ${v.style && v.style !== "standard" ? '<p class="note">The floor3dx-card look th
 ${this._previewOpen ? '<div class="pv-slot"></div><p class="note">Drag to turn and tilt, scroll to zoom the preview. Nothing is saved until you render the snapshot.</p>' : ""}
 <div class="row"><label>Wall transparency: <span data-unit="%">${esc(v.wall_transparency ?? 0)}%</span><input type="range" min="0" max="90" step="5" data-field="view.wall_transparency" data-num value="${esc(v.wall_transparency ?? 0)}" data-key="vwt"></label></div>
 ${Number(v.wall_transparency) > 0 ? `<p class="note">Every wall object (name starting with <code>${esc(v.walls ?? "wall")}</code>) is drawn see-through${Number(v.wall_transparency) >= 30 ? "; floors behind walls can be tapped" : ""}.</p>` : ""}
+${(() => { const n = c.models.reduce((k, m) => k + (m.panels?.length || 0), 0); return `<label class="check"><input type="checkbox" data-field="view.hide_panels" data-bool data-default-true ${v.hide_panels !== false ? "checked" : ""} ${n ? "" : "disabled"}>Hide the floor3d card's text and picture panels${n ? ` (${n} object${n === 1 ? "" : "s"})` : " — run “Find floor3d cards” in section 1 to pick them up"}</label>`; })()}
 <div class="row"><label class="check"><input type="checkbox" data-field="view.room_colors" data-bool ${v.room_colors ? "checked" : ""}>Pastel room floors</label><label class="check"><input type="checkbox" data-field="view.edges" data-bool data-default-true ${v.edges !== false ? "checked" : ""}>Outline edges</label></div>
 <details><summary>Advanced</summary><div class="body">
 <label>Hide objects matching (regex)<input type="text" data-field="view.hide" value="${esc(v.hide ?? "^room_\\d+_2$|^Frame")}" data-key="vh"></label>
@@ -244,7 +245,8 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       // the first card also lends its look theme and north direction, unless already set here
       if (!c.models.length && f.look && !c.view?.style) c.view = { ...(c.view || {}), style: f.look, ...(f.look === "neon" && f.accent ? { accent: f.accent } : {}) };
       if (!c.models.length && f.north !== undefined && c.sun?.north === undefined) c.sun = { ...(c.sun || {}), north: f.north };
-      c.models.push({ url: f.url, ...(f.mtl ? { mtl: f.mtl } : {}), ...(c.models.length ? { place: "east" } : {}) });
+      const panels = panelsOf(f);
+      c.models.push({ url: f.url, ...(f.mtl ? { mtl: f.mtl } : {}), ...(c.models.length ? { place: "east" } : {}), ...(panels.length ? { panels } : {}) });
       this._session = null; return this._emit();
     }
     if (act === "model-add") {
@@ -387,6 +389,14 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     } finally { this._scanning = false; }
     this._found = found;
     for (const f of found) this._floor3d[f.url] = { entities: f.entities, groups: f.groups };
+    // models already here pick up (or refresh) their card's text and picture panels
+    let changed = false;
+    for (const m of this._config.models) {
+      const f = found.find((x) => x.url === m.url); if (!f) continue;
+      const panels = panelsOf(f);
+      if (JSON.stringify(panels) !== JSON.stringify(m.panels || [])) { if (panels.length) m.panels = panels; else delete m.panels; changed = true; }
+    }
+    if (changed) { this._session = null; return this._emit(); }
     this._render();
   }
 
@@ -458,6 +468,16 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     const json = await resp.json();
     return { id: json.id, url: `/api/image/serve/${json.id}/original` };
   }
+}
+/** Objects a floor3d card uses as text or picture panels (type3d text / image), groups resolved. */
+function panelsOf(f) {
+  const out = new Set();
+  for (const e of f?.entities || []) {
+    if (e.type3d !== "text" && e.type3d !== "image") continue;
+    const g = /^<(.+)>$/.exec(e.object_id || "");
+    for (const o of g ? f.groups?.[g[1]] || [] : [e.object_id]) if (o) out.add(o);
+  }
+  return [...out].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 /** floor3dx `north: {x, z}` (scene direction of north) → degrees clockwise from the plan's top. */
 function northDegrees(n) {

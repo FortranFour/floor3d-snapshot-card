@@ -197,6 +197,9 @@ await page.waitForTimeout(400);
 const fit = await page.evaluate(() => { const s = window.harness.card.shadowRoot, card = s.querySelector("ha-card").getBoundingClientRect().width, map = s.querySelector(".map").getBoundingClientRect().width; return { card: Math.round(card), map: Math.round(map), chips: s.querySelectorAll(".chip").length }; });
 check(fit.chips === rooms.length + 1 && fit.map <= fit.card, "all room buttons fit under the map without widening the card", JSON.stringify(fit));
 await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); delete c.room_list; window.harness.setConfig(c); });
+// 10. the floor3d card's text and picture panels are picked up from its bindings
+const panelInfo = await page.evaluate(() => { const c = window.harness.getConfig(), ed = window.harness.editor; return { models: c.models.map((m) => (m.panels || []).length), bound: c.models.map((m) => (ed._floor3d[m.url]?.entities || []).filter((e) => e.type3d === "text" || e.type3d === "image").length), label: ed.shadowRoot.querySelector('input[data-field="view.hide_panels"]')?.closest("label")?.textContent || "" }; });
+check(panelInfo.models.every((n, i) => (n > 0) === (panelInfo.bound[i] > 0)), "text and picture panels recorded per model from the floor3d card", JSON.stringify(panelInfo));
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);

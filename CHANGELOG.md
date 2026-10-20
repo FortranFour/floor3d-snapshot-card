@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 — 2026-10-20
+
+- **Text and picture panels hidden per model.** *Find floor3d cards* records the objects each floor3d card binds as `type3d: text` or `image`. The render hides them (first object of each name, as floor3d resolves it) and unused spares beside them, meaning flat objects of the same size and name family. A model whose panels aren't named `Frame…` no longer keeps blank frames in the snapshot, and objects that share a name elsewhere in the model are left alone. Running *Find floor3d cards* again refreshes the lists for models already added. Switch: *Hide the floor3d card's text and picture panels* (on by default).
+
 ## 0.4.2 — 2026-10-19
 
 - Fix: with *Room buttons under the map* set to all rooms, the row of buttons widened the map column beyond the card, cutting off the map in narrow places such as the card editor's preview. The row now scrolls sideways within the card.

@@ -19,6 +19,7 @@ export const VIEW_DEFAULTS = {
   clay: "#EFE7DC", floor_color: "#E6E0D6", room_colors: false,
   exposure: 0.95, env_intensity: 0.35, contrast: 1.08, saturate: 1.18,
   crop_pad: 0.012, pin_room: 26, jpeg_quality: 0.86, matte: "#ECE8E2",
+  hide_panels: true, // hide each model's `panels` (objects its floor3d card uses for text and pictures)
   sunlight: false,   // also bake the lighting layer; the picture is lit evenly so the card can relight it
   style: "standard", // standard | neon | blueprint | day (the floor3dx look themes)
   accent: "#37e0ff", // neon edge colour
@@ -181,7 +182,9 @@ class Session {
 
     onProgress("Removing ceilings and hanging fixtures…"); await tick();
     const hideRe = cfg.hide ? new RegExp(cfg.hide) : null;
-    for (const r of roots) {
+    for (const [ri, r] of roots.entries()) {
+      const panels = cfg.hide_panels === false ? null : panelObjects(r, this.models[ri]?.panels || []);
+      panels?.forEach((o) => setVisible(o, false));
       const rb = new THREE.Box3().setFromObject(r);
       const rh = rb.max.y - rb.min.y;
       r.traverse((o) => {
@@ -517,6 +520,37 @@ class Session {
     onProgress("Done.");
     return result;
   }
+}
+
+// ---- text and picture panels --------------------------------------------------------
+/**
+ * The floor3d card's text and picture panels in one model: each bound name resolved as floor3d does
+ * (first object of that name), plus unused spares beside them: flat objects of the same size and
+ * name family (`1_14` beside a bound `1_13`, `Frame5_1` beside `Frame4_1`) within a few
+ * panel-widths of a bound one, as in a stack of label frames where only some are bound.
+ */
+function panelObjects(root, names) {
+  const out = new Set();
+  if (!names.length) return out;
+  const boxOf = (o) => new THREE.Box3().setFromObject(o);
+  const bound = names.map((n) => root.getObjectByName(n)).filter(Boolean);
+  const stem = (n) => String(n).replace(/[\d_]+$/, "");
+  const shapes = bound.map((o) => { const b = boxOf(o), s = b.getSize(new THREE.Vector3()); return { b, s, c: b.getCenter(new THREE.Vector3()), dims: [s.x, s.y, s.z].sort((a, z) => a - z), stem: stem(o.name) }; })
+    .filter((x) => x.dims[2] > 0 && x.dims[0] <= x.dims[2] * 0.08);          // flat objects only
+  bound.forEach((o) => out.add(o));
+  if (!shapes.length) return out;
+  root.traverse((o) => {
+    if (out.has(o) || !o.name || !o.parent || o === root) return;
+    let mesh = false; o.traverse((m) => { if (m.isMesh) mesh = true; }); if (!mesh) return;
+    const b = boxOf(o), s = b.getSize(new THREE.Vector3()), dims = [s.x, s.y, s.z].sort((a, z) => a - z);
+    if (!(dims[2] > 0) || dims[0] > dims[2] * 0.08) return;
+    const c = b.getCenter(new THREE.Vector3());
+    for (const p of shapes) {
+      const same = stem(o.name) === p.stem && Math.abs(dims[1] - p.dims[1]) <= p.dims[2] * 0.03 && Math.abs(dims[2] - p.dims[2]) <= p.dims[2] * 0.03;
+      if (same && c.distanceTo(p.c) <= p.dims[2] * 3) { out.add(o); break; }
+    }
+  });
+  return out;
 }
 
 // ---- camera ------------------------------------------------------------------------
