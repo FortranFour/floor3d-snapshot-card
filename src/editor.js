@@ -10,8 +10,15 @@ const slug = (name, taken = new Set()) => {
 };
 const hash = (v) => { const s = JSON.stringify(v); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const ENTITY_DOMAINS = /^(light|switch|fan|cover|climate|media_player|lock|input_boolean|scene|script|sensor|binary_sensor|remote|button|input_button|vacuum|humidifier|valve|water_heater|alarm_control_panel)\./;
-const STYLES = [["standard", "Standard"], ["neon", "Neon"], ["blueprint", "Blueprint"], ["day", "Day"]];
-const STAGE_BG = { neon: "#0b1120", blueprint: "#1a4682", day: "#d6e0ee" };
+const STYLES = [["standard", "Standard"], ["neon", "Neon"], ["blueprint", "Blueprint"], ["day", "Day"], ["paper", "Paper"], ["ember", "Ember"], ["pastel", "Pastel"], ["custom", "Custom colours"]];
+const STAGE_BG = { neon: "#0b1120", blueprint: "#1a4682", day: "#d6e0ee", paper: "#c4b8a0", ember: "#141012", pastel: "#c4c8dc" };
+const THEME_NAMES = STYLES.map(([k]) => k).filter((k) => k !== "standard");
+const CUSTOM_DEFAULTS = { dark: "#1c2230", light: "#6c7a96", edges: "#e8f0ff", stage: "#10141c", hue: 0.15 };
+const THEME_NOTES = {
+  neon: "Dark navy surfaces with glowing edge lines in the edge colour.", blueprint: "Shades of blue with pale lines.", day: "Light grey surfaces with dark navy lines.",
+  paper: "An architect's drawing: cream card, ink lines.", ember: "Charcoal with a warm cast and amber lines.", pastel: "The model's own colours, lightened and softened.",
+  custom: "Your colours: dark where the model is dark, light where it is bright; walls and floors can have their own light tone.",
+};
 const VIEW_RESET = { azimuth: 45, elevation: 52, roll: 0 };
 const PLACES = [["east", "East of first model"], ["west", "West"], ["north", "North"], ["south", "South"], ["as-is", "Keep model coordinates"]];
 
@@ -139,12 +146,22 @@ ${a?.object ? "" : `<p class="note warn">No floor object and no anchor: this roo
 ${sugg.length ? `<div class="chips"><span class="note" style="margin:0 4px 0 0">From the floor3d card:</span>${sugg.slice(0, 8).map((s) => `<button class="icon" data-act="anchor-pick" data-i="${i}" data-model="${s.model}" data-obj="${esc(s.object)}">${esc(multi ? `${s.model + 1}:${s.object}` : s.object)}</button>`).join("")}</div>` : ""}`;
   }
 
+  // The custom theme's colours: the four that matter in a row, the rest behind "More".
+  _customColours(cu) {
+    const pick = (key, label, dflt) => `<label style="flex:0 0 auto;min-width:0">${label}<input type="color" data-field="view.custom.${key}" value="${esc(cu[key] || dflt)}" data-key="cc${key}"></label>`;
+    const hue = cu.hue ?? CUSTOM_DEFAULTS.hue;
+    return `<div class="row">${pick("dark", "Dark", CUSTOM_DEFAULTS.dark)}${pick("light", "Light", CUSTOM_DEFAULTS.light)}${pick("edges", "Edges", CUSTOM_DEFAULTS.edges)}${pick("stage", "Stage", CUSTOM_DEFAULTS.stage)}</div>
+<details><summary>More custom colours</summary><div class="row">${pick("walls", "Walls", cu.light || CUSTOM_DEFAULTS.light)}${pick("floors", "Floors", cu.light || CUSTOM_DEFAULTS.light)}${pick("stage_day", "Stage by day", cu.stage || CUSTOM_DEFAULTS.stage)}<label>Hue kept: <span>${Math.round(hue * 100)}%</span><input type="range" min="0" max="1" step="0.05" data-field="view.custom.hue" data-num value="${hue}" data-key="cchue"></label></div>
+<p class="note">Walls and floors default to the light colour, the day stage to the stage colour. Hue kept: how much of the model's own colour shows through.</p></details>`;
+  }
+
   _snapshotSection(status) {
     const c = this._config, v = c.view || {}, snap = c.snapshot;
     const store = c.storage || "upload";
     return `<p class="note">Renders a static picture of the model in this browser and stores it with Home Assistant, so guests' devices never run 3D.</p>
 <div class="row"><label>Style<select data-field="view.style" data-key="vst">${STYLES.map(([k, t]) => `<option value="${k}" ${(v.style || "standard") === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>${v.style === "neon" ? `<label style="flex:0 0 auto;min-width:0">Edge colour<input type="color" data-field="view.accent" value="${esc(v.accent || "#37e0ff")}" data-key="vac"></label>` : ""}</div>
-${v.style && v.style !== "standard" ? '<p class="note">The floor3dx-card look themes: muted surfaces, edge lines (glowing in Neon and Blueprint) and the theme\'s stage colour behind the map. Bright, saturated colours keep their colour.</p>' : ""}
+${v.style && v.style !== "standard" ? `<p class="note">${THEME_NOTES[v.style] || ""} The floor3dx-card look themes recolour surfaces per pixel and draw edge lines; the map sits on the theme's stage colour. Bright, saturated colours keep their colour.</p>` : ""}
+${v.style === "custom" ? this._customColours(v.custom || {}) : ""}
 <label>View — the picture stays an orthographic (true-scale) projection</label>
 <div class="row"><label>Turn (Y): <span data-unit="°">${esc(v.azimuth ?? 45)}°</span><input type="range" min="0" max="359" step="1" data-field="view.azimuth" data-num data-view="azimuth" value="${esc(v.azimuth ?? 45)}" data-key="va"></label><label>Tilt (X): <span data-unit="°">${esc(v.elevation ?? 52)}°</span><input type="range" min="5" max="90" step="1" data-field="view.elevation" data-num data-view="elevation" value="${esc(v.elevation ?? 52)}" data-key="ve"></label><label>Roll (Z): <span data-unit="°">${esc(v.roll ?? 0)}°</span><input type="range" min="-180" max="180" step="1" data-field="view.roll" data-num data-view="roll" value="${esc(v.roll ?? 0)}" data-key="vr"></label></div>
 <div class="row"><button data-act="preview" ${!c.models.length ? "disabled" : ""}>${this._previewOpen ? "Hide 3D preview" : "Show 3D preview"}</button>${this._previewOpen ? '<button data-act="view-reset">Reset view</button><button data-act="view-top">Straight down</button>' : ""}</div>
@@ -243,7 +260,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     if (act === "use-found") {
       const f = this._found[i]; this._floor3d[f.url] = { entities: f.entities, groups: f.groups };
       // the first card also lends its look theme and north direction, unless already set here
-      if (!c.models.length && f.look && !c.view?.style) c.view = { ...(c.view || {}), style: f.look, ...(f.look === "neon" && f.accent ? { accent: f.accent } : {}) };
+      if (!c.models.length && f.look && !c.view?.style) c.view = { ...(c.view || {}), style: f.look, ...(f.look === "neon" && f.accent ? { accent: f.accent } : {}), ...(f.look === "custom" && f.custom ? { custom: f.custom } : {}) };
       if (!c.models.length && f.north !== undefined && c.sun?.north === undefined) c.sun = { ...(c.sun || {}), north: f.north };
       const panels = panelsOf(f);
       c.models.push({ url: f.url, ...(f.mtl ? { mtl: f.mtl } : {}), ...(c.models.length ? { place: "east" } : {}), ...(panels.length ? { panels } : {}) });
@@ -322,7 +339,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       else this._pv.setView(this._previewView());
     }
   }
-  _paintPreviewStage() { this._pvCanvas.style.background = STAGE_BG[this._config.view?.style] || ""; }
+  _paintPreviewStage() { const v = this._config.view || {}; this._pvCanvas.style.background = v.style === "custom" ? (v.custom?.stage || CUSTOM_DEFAULTS.stage) : STAGE_BG[v.style] || ""; }
   _wirePreview(cv) {
     let drag = null;
     cv.addEventListener("pointerdown", (e) => { if (!this._pv) return; drag = { x: e.clientX, y: e.clientY, v: this._previewView() }; cv.setPointerCapture(e.pointerId); });
@@ -375,7 +392,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
             if (!found.some((f) => f.url === url)) {
               const groups = {};
               for (const g of node.object_groups || []) groups[g.object_group] = (g.objects || []).map((o) => o.object_id);
-              found.push({ url, mtl: node.mtlfile ? `${node.path || ""}${node.mtlfile}` : undefined, look: ["neon", "blueprint", "day"].includes(String(node.look?.theme || "").toLowerCase()) ? String(node.look.theme).toLowerCase() : undefined, accent: node.look?.accent, north: northDegrees(node.north), label: `${b.title || b.url_path || "Dashboard"} › ${view || "view"} · ${node.type.replace("custom:", "")}`, entities: (node.entities || []).filter((e) => typeof e.entity === "string" && typeof e.object_id === "string").map(({ entity, object_id, type3d }) => ({ entity, object_id, ...(type3d ? { type3d } : {}) })), groups });
+              found.push({ url, mtl: node.mtlfile ? `${node.path || ""}${node.mtlfile}` : undefined, look: THEME_NAMES.includes(String(node.look?.theme || "").toLowerCase()) ? String(node.look.theme).toLowerCase() : undefined, accent: node.look?.accent, custom: node.look?.custom && typeof node.look.custom === "object" ? node.look.custom : undefined, north: northDegrees(node.north), label: `${b.title || b.url_path || "Dashboard"} › ${view || "view"} · ${node.type.replace("custom:", "")}`, entities: (node.entities || []).filter((e) => typeof e.entity === "string" && typeof e.object_id === "string").map(({ entity, object_id, type3d }) => ({ entity, object_id, ...(type3d ? { type3d } : {}) })), groups });
             } else {
               // A second card on the same model adds its entities too.
               const f = found.find((x) => x.url === url);

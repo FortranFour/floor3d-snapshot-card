@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0 — 2026-10-22
+
+- **three.js 0.186** (from 0.170), the version floor3dx-card 2.x renders with. The models' object names are made unique the way three.js r130 did (`1_1`, `1_1_1`, `1_1_1_1` for duplicates), so the `panels`, rooms and anchors copied from a floor3d or floor3dx configuration keep matching; current loaders number duplicates differently and the names a configuration refers to could be missing from the model.
+- **Four more styles**, the look themes floor3dx-card added since: **Paper**, **Ember**, **Pastel** and **Custom colours**. Custom shows four colour pickers under the style (dark, light, edges, stage) and keeps the rest — walls, floors, daytime stage, how much hue shows through — behind *More custom colours*; the stage behind the map and the edge glow follow the chosen stage colour. *Find floor3d cards* copies any of the seven themes and the custom colours from the floor3dx card. `node dev/style-test.mjs` renders all eight styles.
+
 ## 0.5.1 — 2026-10-20
 
 - **No lines on wall seams and room borders** (on by default). The outline pass no longer draws the joint between two segments of one straight wall, the vertical lines under a window sill and over a lintel where Sweet Home 3D built the wall from overlapping pieces, or the border between two rooms' floors. Edges are cut where other vertices lie on them and each part is judged on its own: a face pressed against a face of another piece is not a visible face there, and a surface continuing on the far side means no outline. Jambs, sills, lintels, reveals, corners and object contours keep their lines. Ported from floor3dx-card 1.7.3 (`look.edge_skip: seams, floors`); `src/edges.js`, unit test `node dev/edges-test.mjs`. Switch in the Snapshot section; `view.edge_joints: false` restores the previous lines.

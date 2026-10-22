@@ -23,8 +23,9 @@ export const VIEW_DEFAULTS = {
   crop_pad: 0.012, pin_room: 26, jpeg_quality: 0.86, matte: "#ECE8E2",
   hide_panels: true, // hide each model's `panels` (objects its floor3d card uses for text and pictures)
   sunlight: false,   // also bake the lighting layer; the picture is lit evenly so the card can relight it
-  style: "standard", // standard | neon | blueprint | day (the floor3dx look themes)
+  style: "standard", // standard | neon | blueprint | day | paper | ember | pastel | custom (the floor3dx look themes)
   accent: "#37e0ff", // neon edge colour
+  custom: undefined, // custom theme: { dark, light, walls, floors, hue, edges, stage, stage_day } as floor3dx-card's look.custom
   roll: 0,           // degrees, turns the picture about the view axis
   keep_signal: true, walls: "wall", floors: "room, floor",
   wall_transparency: 0, // percent, 0–90: every wall object (name starts with a `walls` prefix) turns see-through
@@ -36,6 +37,35 @@ const CONTROL_DOMAINS = new Set(["light", "switch", "fan", "cover", "climate", "
 const SENSOR_DOMAINS = new Set(["sensor", "binary_sensor"]);
 
 const tick = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
+/**
+ * Object names as three.js r130 gave them, which is what floor3d / floor3dx configurations (and the
+ * `panels`, rooms and anchors copied from them) refer to. A glTF file may name two nodes alike
+ * (Sweet Home 3D exports do); r130 made such names unique with _1, _2, ... checked against every name
+ * so far, so the second `1_1` became `1_1_1` and the file's own `1_1_1` became `1_1_1_1`. Current
+ * loaders append a counter without that check and both end up `1_1_1`. Same code as floor3dx-card.
+ */
+function restoreLegacyNames(gltf) {
+  const json = gltf.parser?.json, associations = gltf.parser?.associations;
+  const sceneDef = json?.scenes?.[json.scene || 0];
+  if (!sceneDef || !json.nodes || !associations) return;
+  const used = {};
+  const unique = (original) => {
+    const sanitized = THREE.PropertyBinding.sanitizeNodeName(original || "");
+    let name = sanitized;
+    for (let i = 1; used[name]; ++i) name = `${sanitized}_${i}`;
+    used[name] = true;
+    return name;
+  };
+  if (sceneDef.name) unique(sceneDef.name);
+  const names = {};
+  const reserve = (indices) => {
+    indices.forEach((i) => { const def = json.nodes[i]; if (def?.name) names[i] = unique(def.name); });
+    indices.forEach((i) => { const def = json.nodes[i]; if (def?.children) reserve(def.children); });
+  };
+  reserve(sceneDef.nodes || []);
+  gltf.scene.traverse((o) => { const a = associations.get(o); if (a && a.nodes !== undefined && names[a.nodes] !== undefined) o.name = names[a.nodes]; });
+}
 
 /** Load the models of a configuration into one scene. */
 export async function createSession({ models, decoderBase, onProgress = () => {} }) {
@@ -60,7 +90,9 @@ export async function createSession({ models, decoderBase, onProgress = () => {}
       }
       object = await loader.loadAsync(url);
     } else {
-      object = (await gltfLoader.loadAsync(url)).scene;
+      const gltf = await gltfLoader.loadAsync(url);
+      object = gltf.scene;
+      restoreLegacyNames(gltf);
     }
     const root = new THREE.Group();
     root.add(object);
@@ -293,7 +325,7 @@ class Session {
     const center = vis.getCenter(new THREE.Vector3()), size = vis.getSize(new THREE.Vector3()), span = Math.max(size.x, size.z);
     // Sunlight mode: even, sun-at-noon lighting — the card adds direction and shadow later.
     // [hemisphere, directional] per style; sunlight mode lights evenly from overhead
-    const LIGHTS = { standard: [0.9, 2.2], neon: [0.6, 0.9], blueprint: [0.75, 1.1], day: [1.25, 1.5] };
+    const LIGHTS = { standard: [0.9, 2.2], neon: [0.6, 0.9], blueprint: [0.75, 1.1], day: [1.25, 1.5], paper: [1.2, 1.4], ember: [0.65, 0.95], pastel: [1.25, 1.5], custom: [0.9, 1.2] };
     const [hk, sk] = LIGHTS[look ? THEME_NAMES[look.index] : "standard"];
     const hemi = new THREE.HemisphereLight(0xffffff, look ? 0x8090a8 : 0xb7a58c, cfg.sunlight ? hk * (look ? 1.7 : 2.1) : hk);
     const sun = new THREE.DirectionalLight(0xfff3e0, cfg.sunlight ? sk * 0.45 : sk);
@@ -368,7 +400,7 @@ class Session {
       scene.traverse((o) => { if (o.isMesh) for (const m of [o.material].flat()) if (m.colorWrite) { hidden.push(m); m.colorWrite = false; } });
       renderer.setClearColor(0x000000, 0); renderer.render(scene, cam);
       hidden.forEach((m) => { m.colorWrite = true; });
-      const glow = st.look.index !== 2;
+      const glow = !st.look.lightStage;
       fctx.globalCompositeOperation = glow ? "lighter" : "source-over";
       if (glow) { fctx.filter = `blur(${Math.max(1.5, H / 600).toFixed(1)}px)`; fctx.globalAlpha = 0.9; fctx.drawImage(renderer.domElement, 0, 0, W, H); fctx.filter = "none"; }
       fctx.globalAlpha = glow ? 0.7 : 0.55; fctx.drawImage(renderer.domElement, 0, 0, W, H);
@@ -580,15 +612,36 @@ export function fitCamera(cam, box, pad = 1.08, aspect = 0) {
 }
 
 // ---- look themes (from floor3dx-card's look.ts, itself adapted from NextFloor, MIT) ----
-const THEME_INDEX = { neon: 0, blueprint: 1, day: 2 };
-const THEME_NAMES = ["neon", "blueprint", "day"];
-/** Stage (background) colours, night and day, per theme. */
-export const STAGES = { neon: { night: "#0b1120", day: "#1a2c4e" }, blueprint: { night: "#1a4682", day: "#225696" }, day: { night: "#d6e0ee", day: "#f2f6fb" } };
-const EDGE_COLORS = [0x37e0ff, 0xcce6ff, 0x142b61];
+// The themes of floor3dx-card's look (2.x): 0 neon, 1 blueprint, 2 day, 3 paper, 4 ember, 5 pastel, 6 custom.
+const THEME_INDEX = { neon: 0, blueprint: 1, day: 2, paper: 3, ember: 4, pastel: 5, custom: 6 };
+const THEME_NAMES = ["neon", "blueprint", "day", "paper", "ember", "pastel", "custom"];
+/** Stage (background) colours, night and day, per theme (custom: from view.custom). */
+export const STAGES = {
+  neon: { night: "#0b1120", day: "#1a2c4e" }, blueprint: { night: "#1a4682", day: "#225696" }, day: { night: "#d6e0ee", day: "#f2f6fb" },
+  paper: { night: "#c4b8a0", day: "#f0e8d4" }, ember: { night: "#141012", day: "#3a2e2a" }, pastel: { night: "#c4c8dc", day: "#f0f2fa" },
+};
+const EDGE_COLORS = [0x37e0ff, 0xcce6ff, 0x142b61, 0x4a3826, 0xff9a3c, 0x6a6e96, 0xe8f0ff];
+/** Themes on a light stage: edge lines blend normally, no glow (an additive glow would vanish). */
+const LIGHT_STAGE = new Set([2, 3, 5]);
+/** Defaults of the custom theme, as in floor3dx-card. */
+export const CUSTOM_DEFAULTS = { dark: "#1c2230", light: "#6c7a96", edges: "#e8f0ff", stage: "#10141c", hue: 0.15 };
+const parseHex = (v) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(v || "").trim()); return m ? `#${m[1].toLowerCase()}` : null; };
+const hexVec = (hex) => { const c = new THREE.Color(hex); return new THREE.Vector3(c.r, c.g, c.b); };
+/** The custom theme's colours, each falling back as floor3dx-card does. */
+export function customColours(c = {}) {
+  const dark = parseHex(c.dark) || CUSTOM_DEFAULTS.dark, light = parseHex(c.light) || CUSTOM_DEFAULTS.light;
+  const hue = Number(c.hue), stage = parseHex(c.stage) || CUSTOM_DEFAULTS.stage;
+  return { dark, light, walls: parseHex(c.walls) || light, floors: parseHex(c.floors) || light, hue: isNaN(hue) ? CUSTOM_DEFAULTS.hue : Math.max(0, Math.min(1, hue)), edges: parseHex(c.edges) || CUSTOM_DEFAULTS.edges, stage, stage_day: parseHex(c.stage_day) || stage };
+}
 const LOOK_FUNCTION = `
 uniform int uTheme;
 uniform int uKeepSignal;
 uniform int uSurface; // 0 generic, 1 wall, 2 floor
+uniform vec3 uCustomDark;
+uniform vec3 uCustomLight;
+uniform vec3 uCustomWall;
+uniform vec3 uCustomFloor;
+uniform float uCustomHue;
 vec3 f3sThemed(vec3 c) {
   float strongest = max(c.r, max(c.g, c.b));
   float weakest = min(c.r, min(c.g, c.b));
@@ -596,15 +649,35 @@ vec3 f3sThemed(vec3 c) {
   float luma = dot(c, vec3(0.299, 0.587, 0.114));
   bool signal = uKeepSignal == 1 && strongest > 0.45 && saturation > 0.45;
   if (signal) return c;
+  vec3 hue = c / max(strongest, 0.001);
   if (uTheme == 0) {
     vec3 base = uSurface == 1 ? vec3(0.075, 0.114, 0.19) : uSurface == 2 ? vec3(0.055, 0.086, 0.16) : vec3(0.09, 0.12, 0.2);
     vec3 lit = uSurface == 1 ? vec3(0.08, 0.19, 0.25) : vec3(0.16, 0.22, 0.36);
     vec3 m = mix(base, lit, clamp(luma * 1.4, 0.0, 1.0));
-    return mix(m, m * (c / max(strongest, 0.001)) * 1.6, 0.18);
+    return mix(m, m * hue * 1.6, 0.18);
   }
   if (uTheme == 1) return mix(vec3(0.04, 0.13, 0.3), vec3(0.2, 0.42, 0.75), clamp(luma * 1.6, 0.0, 1.0));
+  if (uTheme == 3) {
+    vec3 light = uSurface == 1 ? vec3(0.90, 0.84, 0.72) : uSurface == 2 ? vec3(0.87, 0.80, 0.66) : vec3(0.93, 0.89, 0.80);
+    vec3 m = mix(vec3(0.55, 0.47, 0.36), light, clamp(0.35 + luma * 0.8, 0.0, 1.0));
+    return mix(m, m * hue, 0.08);
+  }
+  if (uTheme == 4) {
+    vec3 base = uSurface == 1 ? vec3(0.15, 0.125, 0.115) : uSurface == 2 ? vec3(0.095, 0.08, 0.075) : vec3(0.17, 0.145, 0.13);
+    vec3 m = mix(base, vec3(0.36, 0.28, 0.22), clamp(luma * 1.3, 0.0, 1.0));
+    return mix(m, m * hue * 1.4, 0.15);
+  }
+  if (uTheme == 5) {
+    vec3 grey = vec3(clamp(0.70 + luma * 0.27, 0.0, 0.97));
+    return clamp(grey * mix(vec3(1.0), hue, 0.45), 0.0, 0.97);
+  }
+  if (uTheme == 6) {
+    vec3 light = uSurface == 1 ? uCustomWall : uSurface == 2 ? uCustomFloor : uCustomLight;
+    vec3 m = mix(uCustomDark, light, clamp(luma * 1.3, 0.0, 1.0));
+    return mix(m, m * hue, uCustomHue);
+  }
   vec3 grey = vec3(clamp(0.62 + luma * 0.36, 0.0, 0.97));
-  return mix(grey, grey * (c / max(strongest, 0.001)), 0.12);
+  return mix(grey, grey * hue, 0.12);
 }
 `;
 const prefixes = (v) => (Array.isArray(v) ? v : String(v || "").split(",")).map((x) => String(x).trim().toLowerCase()).filter(Boolean);
@@ -612,7 +685,10 @@ class LookThemer {
   constructor(index, cfg) {
     this.index = index; this.cfg = cfg;
     this.walls = prefixes(cfg.walls); this.floors = prefixes(cfg.floors);
+    this.custom = customColours(cfg.custom);
   }
+  /** Dark stage: the edge lines glow (additive, blurred); light stage: plain lines. */
+  get lightStage() { return this.index === 6 ? new THREE.Color(this.custom.stage).getHSL({}).l > 0.5 : LIGHT_STAGE.has(this.index); }
   surfaceOf(o) {
     for (let p = o; p; p = p.parent) {
       const n = (p.name || "").toLowerCase(); if (!n) continue;
@@ -626,7 +702,9 @@ class LookThemer {
     if (m.shininess !== undefined) m.shininess = 0;
     if (m.specular) m.specular.setRGB(0, 0, 0);
     if (m.roughness !== undefined) m.roughness = 1;
-    const uniforms = { uTheme: { value: this.index }, uKeepSignal: { value: this.cfg.keep_signal === false ? 0 : 1 }, uSurface: { value: surface } };
+    const c = this.custom;
+    const uniforms = { uTheme: { value: this.index }, uKeepSignal: { value: this.cfg.keep_signal === false ? 0 : 1 }, uSurface: { value: surface },
+      uCustomDark: { value: hexVec(c.dark) }, uCustomLight: { value: hexVec(c.light) }, uCustomWall: { value: hexVec(c.walls) }, uCustomFloor: { value: hexVec(c.floors) }, uCustomHue: { value: c.hue } };
     m.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.fragmentShader = shader.fragmentShader
@@ -637,8 +715,10 @@ class LookThemer {
     m.needsUpdate = true;
   }
   edgeMaterial() {
-    const neon = this.index === 0, accent = /^#?[0-9a-f]{6}$/i.test(this.cfg.accent || "") ? this.cfg.accent : "#37e0ff";
-    return new THREE.LineBasicMaterial({ color: neon ? new THREE.Color(accent.startsWith("#") ? accent : `#${accent}`) : EDGE_COLORS[this.index], transparent: true, opacity: 0.85, depthWrite: false, blending: this.index === 2 ? THREE.NormalBlending : THREE.AdditiveBlending });
+    const accent = parseHex(this.cfg.accent);
+    // neon: the accent colour (Edge colour in the editor); custom: its own edge colour; others: the theme's
+    const color = this.index === 0 ? new THREE.Color(accent || "#37e0ff") : this.index === 6 ? new THREE.Color(this.custom.edges) : new THREE.Color(EDGE_COLORS[this.index]);
+    return new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, blending: this.lightStage ? THREE.NormalBlending : THREE.AdditiveBlending });
   }
   skipEdges(o, tiny) {
     const m = Array.isArray(o.material) ? o.material[0] : o.material;
@@ -647,7 +727,7 @@ class LookThemer {
     const z = b.getSize(new THREE.Vector3()).multiply(o.getWorldScale(new THREE.Vector3()));
     return Math.max(z.x, z.y, z.z) < tiny;
   }
-  stage() { return STAGES[THEME_NAMES[this.index]]; }
+  stage() { return this.index === 6 ? { night: this.custom.stage, day: this.custom.stage_day } : STAGES[THEME_NAMES[this.index]]; }
 }
 
 // ---- lighting layer ------------------------------------------------------------

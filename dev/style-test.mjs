@@ -1,10 +1,10 @@
 // Render the snapshot in each style (and an optional roll) and screenshot the card's map.
-// node dev/style-test.mjs [--demo] [--styles standard,neon,blueprint,day] [--walls 0,40,70] [--roll 0] [--dark]
+// node dev/style-test.mjs [--demo] [--styles standard,neon,...,custom] [--walls 0,40,70] [--roll 0] [--dark]
 import { chromium } from "playwright";
 import fs from "node:fs";
 import { start } from "./server.mjs";
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
-const styles = arg("styles", "standard,neon,blueprint,day").split(","), roll = Number(arg("roll", "0"));
+const styles = arg("styles", "standard,neon,blueprint,day,paper,ember,pastel,custom").split(","), roll = Number(arg("roll", "0"));
 const walls = arg("walls", "0").split(",").map(Number);   // wall transparency values to try
 fs.mkdirSync("dev/out", { recursive: true });
 const server = await start();

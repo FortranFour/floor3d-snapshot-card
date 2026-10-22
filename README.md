@@ -44,11 +44,15 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 
 ![Standard, Neon, Blueprint and Day on the demo house](docs/styles.png)
 
-*Style* in the Snapshot section offers the standard clay look and the three look themes of floor3dx-card. Those themes come from NeonPlan 3D and NextFloor:
+*Style* in the Snapshot section offers the standard clay look and the look themes of floor3dx-card 2.x. The first three come from NeonPlan 3D and NextFloor:
 
 - **Neon:** dark navy surfaces with glowing edge lines; *Edge colour* sets the glow (default `#37e0ff`).
 - **Blueprint:** shades of blue with pale edge lines.
 - **Day:** light grey surfaces with dark navy lines.
+- **Paper** (0.6): an architect's drawing, cream card with ink lines.
+- **Ember** (0.6): charcoal with a warm cast and amber lines.
+- **Pastel** (0.6): the model's own colours, lightened and softened, on a pale stage.
+- **Custom colours** (0.6): your own. Four pickers appear under the style: *Dark* (where the model is dark), *Light* (where it is bright), *Edges* and *Stage*; *More custom colours* adds separate light tones for walls and floors, a stage colour for daytime, and how much of the model's own hue shows through. The same colours as floor3dx-card's `look.custom`, and *Find floor3d cards* copies them from a card that uses the custom theme.
 
 Each theme recolours surfaces per pixel, so textures still show as pattern. Walls (`wall…` objects) and floors (`room…`, `floor…`) get their own tints. Bright, saturated colours keep their colour. The card shows the picture on the theme's stage colour; with sunlight on, the stage runs from its night colour to its day colour. If the floor3dx card you pick in *Find floor3d cards* has a `look.theme` or a `north`, the editor copies them in.
 
@@ -103,8 +107,10 @@ models:
     place: east            # east | west | north | south | as-is
     rotate: 0
 view:
-  style: neon              # standard | neon | blueprint | day
+  style: neon              # standard | neon | blueprint | day | paper | ember | pastel | custom
   accent: '#37e0ff'        # neon edge colour
+  # custom: { dark: '#1c2230', light: '#6c7a96', edges: '#e8f0ff', stage: '#10141c',   # style: custom
+  #           walls: '#6c7a96', floors: '#6c7a96', stage_day: '#10141c', hue: 0.15 }
   azimuth: 45              # turn (Y), degrees
   elevation: 52            # tilt (X), degrees; 90 looks straight down
   roll: 0                  # roll (Z), degrees
