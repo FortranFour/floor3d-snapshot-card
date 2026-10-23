@@ -280,6 +280,36 @@ await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()
     check(scroll0 > 200 && Math.abs(top1 - top0) <= 2, "moving an entity up keeps its room where it was on screen", JSON.stringify({ scroll0, top0, top1 }));
   }
 }
+// 15. a host that builds a fresh editor for every change (a wrapper card): the room stays open and in place
+{
+  const target = await page.evaluate(() => { const c = window.harness.getConfig(); for (let i = c.rooms.length - 1; i > 0; i--) if ((c.rooms[i].entities || []).length >= 2) return { i, id: c.rooms[i].id }; return null; });
+  if (target) {
+    await page.evaluate((t) => {
+      const ed = window.harness.editor; for (const k of Object.keys(ed._open)) ed._open[k] = k === "rooms"; ed._roomOpen.clear(); ed._roomOpen.add(t.id); ed._render();
+      // from now on, every config change replaces the editor with a new element
+      const onChange = (e) => {
+        const cfg = e.detail.config; window.harness.card.setConfig(cfg);
+        setTimeout(() => {
+          const old = window.harness.editor, fresh = document.createElement("floor3d-snapshot-card-editor");
+          fresh.hass = window.harness.hass; fresh.setConfig(cfg); fresh.addEventListener("config-changed", onChange);
+          old.replaceWith(fresh); window.harness.editor = fresh; window.__recreated = (window.__recreated || 0) + 1;
+        }, 30);
+      };
+      window.__swapOn = onChange; ed.addEventListener("config-changed", onChange);
+    }, target);
+    await page.waitForFunction(() => !window.harness.editor._pinning, null, { timeout: 10000 });
+    await page.evaluate((t) => window.harness.editor.shadowRoot.querySelector(`details.room[data-room="${t.i}"]`).scrollIntoView({ block: "center" }), target);
+    await page.waitForTimeout(100);
+    const pos = () => page.evaluate((t) => { const el = window.harness.editor.shadowRoot.querySelector(`details.room[data-room="${t.i}"]`); return { top: Math.round(el.getBoundingClientRect().top), open: el.open }; }, target);
+    const p0 = await pos();
+    const btn = await page.evaluateHandle((t) => window.harness.editor.shadowRoot.querySelector(`[data-act="ent-up"][data-i="${t.i}"][data-j="1"]`), target);
+    await btn.asElement().click();
+    await page.waitForFunction(() => window.__recreated >= 1, null, { timeout: 5000 });
+    await page.waitForTimeout(800);
+    const p1 = await pos();
+    check(p1.open && Math.abs(p1.top - p0.top) <= 2, "with an editor rebuilt for every change, the room stays open and in place", JSON.stringify({ p0, p1, recreated: await page.evaluate(() => window.__recreated) }));
+  }
+}
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);

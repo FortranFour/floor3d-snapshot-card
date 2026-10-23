@@ -54,6 +54,8 @@ ha-icon{--mdc-icon-size:20px;width:20px;height:20px;color:var(--secondary-text-c
 input[type=color]{width:52px;height:38px;padding:2px;border-radius:8px;border:1px solid var(--divider-color,rgba(127,127,127,.35));background:transparent}
 `;
 
+let CARRY = null;   // view state handed from an editor to its replacement (see _carry)
+
 class Floor3dSnapshotCardEditor extends HTMLElement {
   constructor() {
     super();
@@ -64,11 +66,41 @@ class Floor3dSnapshotCardEditor extends HTMLElement {
     this._shadowRootEvents();
   }
   disconnectedCallback() { this._closePreview(); this._previewOpen = false; if (this._previewTime != null) { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); } }
-  setConfig(config) { this._config = clone(config) || {}; this._config.rooms ||= []; this._config.models ||= []; this._render(); }
+  setConfig(config) {
+    this._config = clone(config) || {}; this._config.rooms ||= []; this._config.models ||= [];
+    if (!this._adopted) { this._adopted = true; this._adopt(); }
+    this._render();
+  }
+  connectedCallback() { if (this._pending) this._render(); }
+
+  // ---- surviving re-creation -------------------------------------------------
+  // Some hosts (a wrapper card, for one) build a fresh editor for every change. The editor that
+  // emitted the change leaves its view state here and a new editor of the same models adopts it,
+  // so the open rooms, the room being edited (at the same place on screen), the loaded model
+  // and the floor3d lookups carry over instead of resetting to the first room.
+  _carry() {
+    const el = this._anchor && this.shadowRoot.querySelector(this._anchor);
+    return {
+      t: performance.now(), models: JSON.stringify(this._config.models || []),
+      open: { ...this._open }, roomOpen: [...this._roomOpen], anchor: this._anchor,
+      top: el && this.isConnected ? el.getBoundingClientRect().top : undefined,
+      floor3d: this._floor3d, found: this._found, msg: this._msg, detectSensors: this._detectSensors, previewOpen: this._previewOpen,
+      session: this._session, sessionKey: this._sessionKey, objectNames: this._objectNames,
+    };
+  }
+  _adopt() {
+    const c = CARRY;
+    if (!c || performance.now() - c.t > 5000 || c.models !== JSON.stringify(this._config.models || [])) return;
+    CARRY = null;
+    Object.assign(this, { _open: c.open, _roomOpen: new Set(c.roomOpen), _anchor: c.anchor, _floor3d: c.floor3d || {}, _found: c.found, _msg: c.msg, _detectSensors: c.detectSensors, _session: c.session, _sessionKey: c.sessionKey, _objectNames: c.objectNames });
+    if (c.previewOpen) this._reopenPreview = true;
+    if (c.anchor && c.top !== undefined) this._pending = { top: c.top };
+  }
   set hass(hass) { const first = !this._hass; this._hass = hass; if (first) this._render(); }
 
   _emit() {
     const config = clone(this._config);
+    CARRY = this._carry();
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config }, bubbles: true, composed: true }));
     this._render();
   }
@@ -95,6 +127,8 @@ ${this._section("display", "5 · Display", "", "", this._displaySection())}`;
     if (focus) root.querySelector(`[data-key="${CSS.escape(focus)}"]`)?.focus({ preventScroll: true });
     this._mountPreview();
     if (before !== undefined) this._pin(anchorOf, before);
+    else if (this._pending && this.isConnected) { const { top } = this._pending; this._pending = null; this._pin(anchorOf, top); }
+    if (this._reopenPreview && this.isConnected) { this._reopenPreview = false; this._openPreview(); }
   }
   /** Hold the anchor at `top` on screen now and for a moment after: Home Assistant relays out the
    *  dialog (and rebuilds the preview) after a config change, which can snap the scroll position.

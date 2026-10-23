@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.4 — 2026-10-23
+
+- Editor: the room being edited stays open and in place also where the host builds a new editor for every change, as a wrapper card may. 0.8.3 only covered an editor that survives the change. The editor now hands its view state to its replacement: open sections and rooms, the room being edited and its place on screen, the open 3D preview, the loaded model and the floor3d lookups. The model isn't reloaded either.
+
 ## 0.8.3 — 2026-10-23
 
 - Editor: changing something in a room (moving an entity up, removing one, editing a label) no longer makes the editor jump back to the top of the room list. The room being edited stays where it was on screen while the editor rebuilds, and for a moment afterwards, while Home Assistant relays out the dialog and rebuilds the preview. Scrolling or tapping ends that hold at once.
