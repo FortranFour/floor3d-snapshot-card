@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 — 2026-10-23
+
+- **Hide in guest mode, per entity.** Each entity in a room has a *Hide in guest mode* checkbox (`guest_hidden: true`). While guest mode is on, that entity has no tile, doesn't count towards the room's lights-on badge or glow, is skipped by *All off in this room*, and the card refuses to control it. With guest mode off, it shows as usual. The card-wide guest-mode limits (locks, garage doors and gates, alarms, volume, color) are unchanged.
+
 ## 0.8.5 — 2026-10-23
 
 - The editor's preview shows the room being edited. Working in a room (clicking, typing or opening it) selects that room in the preview card. A host that builds a new preview card for every change, such as a wrapper card, starts the new card on that room too, instead of on the first room, which made the preview jump back to the first room after each edit. Only preview cards follow (those marked `preview`, or inside the card-edit dialog); cards on the dashboard don't.

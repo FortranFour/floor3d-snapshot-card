@@ -16,7 +16,7 @@ Actual card created from existing floor3dx-card:
 - **See-through walls.** One slider makes every wall transparent by the amount you choose, so rooms behind walls show and can be tapped.
 - **Any view angle.** Turn (Y), tilt (X) and roll (Z) the model in a live 3D preview in the editor. The picture is always an orthographic, true-scale projection.
 - **Sunlight (optional).** Shading and wall shadows follow the real sun across your house through the day, from your Home Assistant location and a north direction you set. Dawn and dusk turn warm, night turns a muted blue, and rooms with lights on glow after dark.
-- **Guest mode** (on by default): locks can only be locked, garage doors and gates only closed, alarms are read-only, TV volume is capped, thermostats can be limited to a range.
+- **Guest mode** (on by default): locks can only be locked, garage doors and gates only closed, alarms are read-only, TV volume is capped, thermostats can be limited to a range. Any entity can also be marked *Hide in guest mode* in the room editor (`guest_hidden: true`): while guest mode is on, it has no tile, doesn't count towards the room's lights-on, and the card won't control it.
 
 | Editor | Phone |
 |---|---|
@@ -145,6 +145,8 @@ rooms:
         dimmer: light.kitchen_sink_bulb      # …and the bulb behind it, for brightness
       - entity: sensor.kitchen_temperature
         read_only: true        # show state only
+      - entity: switch.arcade_machine
+        guest_hidden: true     # not shown while guest mode is on
   - id: porch
     name: Porch
     anchor: { model: 0, object: porch_light }   # pin-only room

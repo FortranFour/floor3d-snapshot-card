@@ -88,7 +88,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (!ids.includes(this._room)) this._room = ids.includes(config.default_room) ? config.default_room : ids[0];
     this._followEditor();
     this._mapEl = null; this._index = null; this._tintKey = ""; this._light = null; this._direct = null; this._shadeKey = ""; this._directKey = ""; this._sunKey = "";
-    this._entities = new Set(rooms.flatMap((r) => (r.entities || []).flatMap((e) => [e.entity, ...(e.dimmer ? [e.dimmer] : [])])));
+    this._entities = new Set(rooms.flatMap((r) => this._ents(r).flatMap((e) => [e.entity, ...(e.dimmer ? [e.dimmer] : [])])));
     this._request();
   }
   set hass(hass) {
@@ -156,7 +156,9 @@ export class Floor3dSnapshotCard extends HTMLElement {
   // ---- state helpers --------------------------------------------------------
   _s(id) { return this._hass?.states?.[id]; }
   _room_(id = this._room) { return this._config.rooms.find((r) => r.id === id); }
-  _activeCount(room) { return (room.entities || []).filter((e) => ACTIVE_DOMAINS.has(domainOf(e.entity)) && isOn(this._s(e.entity))).length; }
+  /** A room's entities as shown: in guest mode, without those marked guest_hidden. */
+  _ents(room) { const g = this._config?.guest_mode !== false; return (room?.entities || []).filter((e) => !(g && e.guest_hidden)); }
+  _activeCount(room) { return this._ents(room).filter((e) => ACTIVE_DOMAINS.has(domainOf(e.entity)) && isOn(this._s(e.entity))).length; }
   _name(e, room = this._room_()) {
     if (e.name) return e.name;
     // "Kitchen Counter Light" inside the Kitchen panel reads as "Counter Light".
@@ -197,7 +199,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
   }
 
   _panel(room) {
-    const ents = room.entities || [];
+    const ents = this._ents(room);
     const active = this._activeCount(room);
     const offable = ents.filter((e) => ["light", "switch", "input_boolean", "fan"].includes(domainOf(e.entity)) && !e.read_only);
     return `<section class="panel" aria-labelledby="f3s-room"><div class="roomhead"><div class="roomicon">${icon(room.icon || "mdi:door-open")}</div><div><h3 id="f3s-room">${esc(titleCase(room.name || room.id))}</h3><p>${esc(room.description || (active ? `${active} on` : ents.length ? "Everything is off" : "Nothing to control here"))}</p></div></div><div class="tiles">${ents.map((e) => this._tile(e)).join("")}</div>${offable.length ? `<div class="foot"><button class="quiet" data-action="room-off" data-focus="room-off" ${offable.some((e) => isOn(this._s(e.entity))) ? "" : "disabled"}>${icon("mdi:power")}All off in this room</button><span class="hint">Shows each device's current state.</span></div>` : ""}</section>`;
@@ -488,7 +490,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (action === "room") { if (this._room_(room)) this._select(room); return; }
     if (action === "labels") { this._labels = !this._labels; try { localStorage.setItem("floor3d-snapshot-labels", this._labels ? "1" : "0"); } catch { /* private */ } this._request(); return; }
     if (action === "room-off") {
-      for (const e of this._room_().entities || []) if (["light", "switch", "input_boolean", "fan"].includes(domainOf(e.entity)) && !e.read_only && isOn(this._s(e.entity))) this._call(e.entity, domainOf(e.entity), "turn_off");
+      for (const e of this._ents(this._room_())) if (["light", "switch", "input_boolean", "fan"].includes(domainOf(e.entity)) && !e.read_only && isOn(this._s(e.entity))) this._call(e.entity, domainOf(e.entity), "turn_off");
       return;
     }
     if (!s || !this._allowed(id)) return;

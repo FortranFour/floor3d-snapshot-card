@@ -257,6 +257,26 @@ await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()
   check(follows === pick.id && fresh === pick.id && plain !== pick.id, "the preview shows the room being edited; dashboard cards don't follow", JSON.stringify({ want: pick.id, follows, fresh, plain }));
   await page.evaluate(() => { window.harness.card.preview = false; });
 }
+// 12c. an entity can be hidden in guest mode (and only in guest mode)
+{
+  // an entity that appears only once in the config (an entry elsewhere, not hidden, would still allow it)
+  const t = await page.evaluate(() => { const c = window.harness.getConfig(), all = c.rooms.flatMap((r) => (r.entities || []).flatMap((e) => [e.entity, e.dimmer].filter(Boolean))); for (const [i, r] of c.rooms.entries()) { const j = (r.entities || []).findIndex((e) => all.filter((x) => x === e.entity).length === 1); if (j >= 0 && r.entities.length >= 2) { [r.entities[0], r.entities[j]] = [r.entities[j], r.entities[0]]; window.harness.setConfig(c); return { i, id: r.id, ent: r.entities[0].entity }; } } return null; });
+  await page.evaluate((t) => { const ed = window.harness.editor; ed._open.rooms = true; ed._roomOpen.add(t.id); ed._render(); }, t);
+  await page.evaluate((t) => { const box = window.harness.editor.shadowRoot.querySelector(`input[data-field="rooms.${t.i}.entities.0.guest_hidden"]`); box.checked = true; box.dispatchEvent(new Event("change", { bubbles: true })); }, t);
+  const stored = await page.evaluate((t) => window.harness.getConfig().rooms[t.i].entities[0].guest_hidden, t);
+  await page.evaluate((t) => window.harness.card._select(t.id), t);
+  await page.waitForTimeout(250);
+  const tiles = () => page.evaluate((t) => [...window.harness.card.shadowRoot.querySelectorAll(".tile [data-entity]")].map((x) => x.dataset.entity).includes(t.ent), t);
+  const inGuest = await tiles();
+  const n0 = await page.evaluate(() => window.harness.calls.length);
+  await page.evaluate((t) => window.harness.card._call(t.ent, t.ent.split(".")[0], "turn_on"), t);
+  const refused = (await page.evaluate(() => window.harness.calls.length)) === n0;
+  await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); c.guest_mode = false; window.harness.setConfig(c); });
+  await page.waitForTimeout(250);
+  const notGuest = await tiles();
+  check(stored === true && !inGuest && refused && notGuest, "an entity hidden in guest mode: no tile and no control while guest mode is on, shown when off", JSON.stringify({ stored, inGuest, refused, notGuest }));
+  await page.evaluate((t) => { const c = structuredClone(window.harness.getConfig()); delete c.guest_mode; delete c.rooms[t.i].entities[0].guest_hidden; window.harness.setConfig(c); }, t);
+}
 // 13. detecting again: missing entities come back, ones removed with ✕ stay out until restored
 {
   const r0 = await page.evaluate(() => { const c = window.harness.getConfig(); const i = c.rooms.findIndex((r) => (r.entities || []).length >= 2 && r.floors?.length); return { i, a: c.rooms[i].entities[0].entity, b: c.rooms[i].entities[1].entity, id: c.rooms[i].id }; });
