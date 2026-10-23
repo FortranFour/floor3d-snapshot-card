@@ -77,6 +77,10 @@ class Floor3dSnapshotCardEditor extends HTMLElement {
   _render() {
     if (!this._config) return;
     const root = this.shadowRoot, focus = root.activeElement?.dataset?.key;
+    // Keep what is being edited where it is on screen: rebuilding the editor otherwise lets the
+    // dialog's scroll position snap (to the top of the Rooms list, say).
+    const anchorOf = () => this._anchor && root.querySelector(this._anchor);
+    const before = anchorOf()?.getBoundingClientRect().top;
     const c = this._config, snap = c.snapshot, key = snapshotKey(c);
     const status = !c.models.length ? ["", ""] : !snap ? ["warn", "Not rendered"] : snap.key !== key ? ["warn", "Out of date"] : ["ok", "Up to date"];
     const entities = this._hass ? Object.keys(this._hass.states).filter((id) => ENTITY_DOMAINS.test(id)).sort() : [];
@@ -88,8 +92,27 @@ ${this._section("rooms", "2 · Rooms", `${c.rooms.length} room${c.rooms.length =
 ${this._section("snapshot", "3 · Snapshot", status[1], status[0], this._snapshotSection(status))}
 ${this._section("sun", "4 · Sunlight", c.sun?.enabled ? (snap?.light ? "On" : "Needs a render") : "Off", c.sun?.enabled && !snap?.light ? "warn" : "", this._sunSection())}
 ${this._section("display", "5 · Display", "", "", this._displaySection())}`;
-    if (focus) root.querySelector(`[data-key="${CSS.escape(focus)}"]`)?.focus();
+    if (focus) root.querySelector(`[data-key="${CSS.escape(focus)}"]`)?.focus({ preventScroll: true });
     this._mountPreview();
+    if (before !== undefined) this._pin(anchorOf, before);
+  }
+  /** Hold the anchor at `top` on screen now and for a moment after: Home Assistant relays out the
+   *  dialog (and rebuilds the preview) after a config change, which can snap the scroll position.
+   *  Scrolling by hand ends the hold at once. */
+  _pin(anchorOf, top) {
+    const fix = () => {
+      const el = anchorOf(); if (!el) return;
+      const d = el.getBoundingClientRect().top - top;
+      if (Math.abs(d) > 0.5) { const sc = scrollParent(this); if (sc) sc.scrollTop += d; else window.scrollBy(0, d); }
+    };
+    fix();
+    const until = performance.now() + 600, gen = (this._pinGen = (this._pinGen || 0) + 1);
+    const EV = ["wheel", "touchmove", "pointerdown", "keydown"];   // any hand on the page ends the hold
+    const stop = () => { if (gen === this._pinGen) { this._pinGen++; this._pinning = false; } EV.forEach((t) => window.removeEventListener(t, stop, true)); };
+    this._pinning = true;
+    EV.forEach((t) => window.addEventListener(t, stop, true));
+    const loop = () => { if (gen !== this._pinGen) return; fix(); if (performance.now() < until) requestAnimationFrame(loop); else stop(); };
+    requestAnimationFrame(loop);
   }
   _section(id, title, badge, badgeClass, body) {
     return `<details data-section="${id}" ${this._open[id] ? "open" : ""}><summary>${title}<span class="badge ${badgeClass}">${esc(badge)}</span></summary><div class="body">${body}</div></details>`;
@@ -118,7 +141,7 @@ ${c.rooms.map((r, i) => this._roomEditor(r, i)).join("")}`;
     const ents = r.entities || [];
     const multi = this._config.models.length > 1;
     const objRef = (f) => `${multi ? `${f.model + 1}:` : ""}${f.object}`;
-    return `<details class="room item" data-room="${i}" ${this._roomOpen.has(r.id) ? "open" : ""}><summary><ha-icon icon="${esc(r.icon || "mdi:door-open")}"></ha-icon>${esc(r.name || r.id)}<span class="badge">${ents.length} entit${ents.length === 1 ? "y" : "ies"}</span></summary><div class="body">
+    return `<details class="room item" data-room="${i}" data-rid="${esc(r.id)}" ${this._roomOpen.has(r.id) ? "open" : ""}><summary><ha-icon icon="${esc(r.icon || "mdi:door-open")}"></ha-icon>${esc(r.name || r.id)}<span class="badge">${ents.length} entit${ents.length === 1 ? "y" : "ies"}</span></summary><div class="body">
 <div class="row"><label>Name<input type="text" data-field="rooms.${i}.name" value="${esc(r.name || "")}" data-key="rn${i}"></label><label>Icon<input type="text" data-field="rooms.${i}.icon" value="${esc(r.icon || "")}" placeholder="mdi:sofa-outline" data-key="ri${i}"></label></div>
 <label>Floor objects (tap target and tint)</label><div class="chips">${(r.floors || []).map((f, j) => `<span class="chip">${esc(objRef(f))}<button data-act="floor-remove" data-i="${i}" data-j="${j}" title="Remove">✕</button></span>`).join("") || '<span class="note">None — the room shows as a pin only.</span>'}</div>
 <div class="row"><label>Add floor object<input type="text" list="f3s-objects" placeholder="room_3_1" data-key="rf${i}" id="floor-${i}"></label>${multi ? `<label style="max-width:110px">Model<select id="floor-model-${i}">${this._config.models.map((_, m) => `<option value="${m}">${m + 1}</option>`).join("")}</select></label>` : ""}<button data-act="floor-add" data-i="${i}">Add</button></div>
@@ -233,6 +256,13 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       else if (l) l.firstChild.textContent = l.firstChild.textContent.replace(/[\d.]+°/, `${el.value}°`);
     });
     root.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.id?.match(/^(new-model|ent-|floor-)/)) { e.preventDefault(); e.target.closest(".row")?.querySelector("button")?.click(); } });
+    // remember where the host is working (room, else section) before anything re-renders
+    const mark = (e) => {
+      const t = e.composedPath?.()[0] || e.target; if (!t?.closest) return;
+      const room = t.closest("details.room"), sec = t.closest("details[data-section]");
+      this._anchor = room?.dataset.rid ? `details.room[data-rid="${CSS.escape(room.dataset.rid)}"]` : sec ? `details[data-section="${sec.dataset.section}"]` : this._anchor;
+    };
+    for (const type of ["pointerdown", "focusin", "keydown"]) root.addEventListener(type, mark, true);
     root.addEventListener("click", (e) => { const b = e.target.closest("button[data-act]"); if (b && !b.disabled) this._act(b.dataset.act, b.dataset, b); });
   }
   _field(el) {
@@ -522,6 +552,16 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     const json = await resp.json();
     return { id: json.id, url: `/api/image/serve/${json.id}/original` };
   }
+}
+/** The nearest ancestor that scrolls (across shadow roots), e.g. the card editor dialog's content. */
+function scrollParent(el) {
+  for (let n = el; n; ) {
+    n = n.assignedSlot || n.parentElement || n.getRootNode?.().host || null;
+    if (!n || n === document.documentElement) break;
+    const s = getComputedStyle(n);
+    if (/(auto|scroll)/.test(s.overflowY) && n.scrollHeight > n.clientHeight + 1) return n;
+  }
+  return document.scrollingElement;
 }
 /** switch → light: floor3d `color_entity` on a non-light entry names the dimmable bulb behind it. */
 function dimmersOf(found) {

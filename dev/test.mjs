@@ -260,6 +260,26 @@ await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()
   const restored = await page.evaluate((r0) => { const r = window.harness.getConfig().rooms.find((x) => x.id === r0.id); return { has: r.entities.map((e) => e.entity).includes(r0.a), removed: r.removed }; }, r0);
   check(restored.has && !restored.removed, "Restore brings removed entities back", JSON.stringify(restored));
 }
+// 14. editing a room further down keeps it in place (no jump back to the first room)
+{
+  const target = await page.evaluate(() => { const c = window.harness.getConfig(); for (let i = c.rooms.length - 1; i > 0; i--) if ((c.rooms[i].entities || []).length >= 2) return { i, id: c.rooms[i].id }; return null; });
+  if (target) {
+    await page.evaluate((t) => { const ed = window.harness.editor; for (const k of Object.keys(ed._open)) ed._open[k] = k === "rooms"; ed._roomOpen.clear(); for (const r of window.harness.getConfig().rooms) ed._roomOpen.add(r.id); ed._render(); }, target);
+    await page.waitForFunction(() => !window.harness.editor._pinning, null, { timeout: 10000 });   // let the hold from that re-render end
+    await page.evaluate((t) => { const el = window.harness.editor.shadowRoot.querySelector(`details.room[data-rid="${t.id}"]`); el.scrollIntoView({ block: "center" }); }, target);
+    await page.waitForFunction(() => !window.harness.editor._pinning, null, { timeout: 10000 });
+    const pos = () => page.evaluate((t) => Math.round(window.harness.editor.shadowRoot.querySelector(`details.room[data-rid="${t.id}"]`).getBoundingClientRect().top), target);
+    const scroll0 = await page.evaluate(() => document.getElementById("editor").scrollTop);
+    const top0 = await pos();
+    const btn = await page.evaluateHandle((t) => window.harness.editor.shadowRoot.querySelector(`[data-act="ent-up"][data-i="${t.i}"][data-j="1"]`), target);
+    // Home Assistant relays out its dialog after a config change; simulate the scroll snapping back
+    await page.evaluate(() => window.harness.editor.addEventListener("config-changed", () => requestAnimationFrame(() => { document.getElementById("editor").scrollTop = 0; }), { once: true }));
+    await btn.asElement().click();
+    await page.waitForTimeout(800);
+    const top1 = await pos();
+    check(scroll0 > 200 && Math.abs(top1 - top0) <= 2, "moving an entity up keeps its room where it was on screen", JSON.stringify({ scroll0, top0, top1 }));
+  }
+}
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);

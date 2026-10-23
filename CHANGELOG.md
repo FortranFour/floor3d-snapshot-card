@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.3 — 2026-10-23
+
+- Editor: changing something in a room (moving an entity up, removing one, editing a label) no longer makes the editor jump back to the top of the room list. The room being edited stays where it was on screen while the editor rebuilds, and for a moment afterwards, while Home Assistant relays out the dialog and rebuilds the preview. Scrolling or tapping ends that hold at once.
+
 ## 0.8.2 — 2026-10-23
 
 - *Detect rooms again* now merges: rooms you have edited keep their entities, labels, order and dimmers, and detected entities missing from them are added at the end, with dimmers from the floor3d card. Before, an edited room was left exactly as it was, so an entity removed by mistake never came back.
