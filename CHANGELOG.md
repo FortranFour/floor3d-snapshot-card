@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 — 2026-10-23
+
+- *Create a Guest mode switch* never makes a second helper. It reuses an existing one: `input_boolean.guest_mode`, a helper created with the id `guest_mode`, or any toggle helper named “Guest mode”. The button is disabled while it works, so a second press can't race the first. After creating, it reads the actual entity id back from the entity registry, which differs (`guest_mode_2`) when the id is taken, and links that.
+
 ## 0.11.0 — 2026-10-23
 
 - **Guest mode switch.** `guest_mode_entity` (an `input_boolean` or `switch`) drives guest mode, so dashboards, automations, schedules and voice assistants can turn it on and off; if the switch is unavailable, the card falls back to `guest_mode`. *Display → Create a Guest mode switch* creates `input_boolean.guest_mode` (in the card's current state) and links it. Administrators see a *Guest mode on/off* chip beside the title that flips it; other users don't. Every guest-mode rule (limits, hidden entities, color default, volume cap) follows the switch live.

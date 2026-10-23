@@ -59,10 +59,16 @@ const hass = {
     if (msg.type === "lovelace/config") { if (msg.url_path === "dashboard-main") return JSON.parse(JSON.stringify(dashboard)); return { views: [] }; }
     if (msg.type === "image/delete") return null;
     if (msg.type === "input_boolean/create") {
+      // like Home Assistant: the item id is from the name; the entity id gets _2 if it's taken
+      window.__creates = (window.__creates || 0) + 1;
       const id = String(msg.name || "toggle").toLowerCase().replace(/[^a-z0-9]+/g, "_");
-      hass.states = { ...hass.states, [`input_boolean.${id}`]: { entity_id: `input_boolean.${id}`, state: msg.initial ? "on" : "off", attributes: { friendly_name: msg.name, icon: msg.icon } } };
+      let eid = `input_boolean.${id}`; for (let n = 2; hass.states[eid]; n++) eid = `input_boolean.${id}_${n}`;
+      (window.__registry ||= []).push({ entity_id: eid, platform: "input_boolean", unique_id: id });
+      await new Promise((r) => setTimeout(r, 200));
+      hass.states = { ...hass.states, [eid]: { entity_id: eid, state: msg.initial ? "on" : "off", attributes: { friendly_name: msg.name, icon: msg.icon } } };
       push(); return { id, name: msg.name, icon: msg.icon };
     }
+    if (msg.type === "config/entity_registry/list") return window.__registry || [];
     throw Object.assign(new Error("unknown command"), { code: "unknown_command" });
   },
   fetchWithAuth: (url, init) => fetch(url, init),

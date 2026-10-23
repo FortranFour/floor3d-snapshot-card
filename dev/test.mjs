@@ -297,8 +297,11 @@ await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()
 {
   const t = await page.evaluate(() => { const c = window.harness.getConfig(), all = c.rooms.flatMap((r) => (r.entities || []).flatMap((e) => [e.entity, e.dimmer].filter(Boolean))); for (const [i, r] of c.rooms.entries()) { const j = (r.entities || []).findIndex((e) => all.filter((x) => x === e.entity).length === 1); if (j >= 0) { r.entities[j].guest_hidden = true; window.harness.setConfig(c); return { i, id: r.id, ent: r.entities[j].entity }; } } return null; });
   await page.evaluate(() => { window.harness.editor._open.display = true; window.harness.editor._render(); });
-  await clickEd('[data-act="guest-create"]');
+  // a double click creates one helper, not two
+  await page.evaluate(() => { const b = window.harness.editor.shadowRoot.querySelector('[data-act="guest-create"]'); b.click(); b.click(); });
   await page.waitForFunction(() => window.harness.getConfig().guest_mode_entity, null, { timeout: 5000 });
+  await page.waitForTimeout(400);
+  check((await page.evaluate(() => window.__creates)) === 1, "a double click on Create makes one helper", String(await page.evaluate(() => window.__creates)));
   const gid = await page.evaluate(() => window.harness.getConfig().guest_mode_entity);
   await page.evaluate((t) => window.harness.card._select(t.id), t);
   const shown = () => page.evaluate((t) => [...window.harness.card.shadowRoot.querySelectorAll(".tile [data-entity]")].some((x) => x.dataset.entity === t.ent), t);
@@ -318,6 +321,14 @@ await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()
   await page.evaluate(() => { window.harness.hass.user = { is_admin: true }; window.harness.push(); });
   check(/Guest mode on/.test(chip) && flipped === "off" && !guestSees, "administrators get a Guest mode chip that flips the switch; others don't see it", JSON.stringify({ chip, flipped, guestSees }));
   await page.evaluate((t) => { const c = structuredClone(window.harness.getConfig()); delete c.guest_mode_entity; delete c.rooms[t.i].entities.find((e) => e.entity === t.ent).guest_hidden; window.harness.setConfig(c); }, t);
+  // pressing it again reuses the helper; if guest_mode were taken by something else, the real id is read back
+  await page.evaluate(() => { window.harness.editor._open.display = true; window.harness.editor._render(); });
+  await clickEd('[data-act="guest-create"]');
+  await page.waitForFunction(() => window.harness.getConfig().guest_mode_entity, null, { timeout: 5000 });
+  const reuse = await page.evaluate(() => ({ id: window.harness.getConfig().guest_mode_entity, creates: window.__creates }));
+  await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); delete c.guest_mode_entity; window.harness.setConfig(c); const h = window.harness.hass; const st = { ...h.states }; st["input_boolean.guest_mode"] = { entity_id: "input_boolean.guest_mode", state: "on", attributes: { friendly_name: "Something else" } }; h.states = st; window.__registry = (window.__registry || []).filter((e) => e.unique_id !== "guest_mode"); window.harness.push(); });
+  // with input_boolean.guest_mode taken by an unrelated helper the button says "Use…" and links it; a fresh install path is covered by the first check
+  check(reuse.id === "input_boolean.guest_mode" && reuse.creates === 1, "pressing the button again links the existing helper instead of creating another", JSON.stringify(reuse));
 }
 // 13. detecting again: missing entities come back, ones removed with ✕ stay out until restored
 {

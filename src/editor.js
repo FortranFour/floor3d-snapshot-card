@@ -282,7 +282,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
 <label>Light controls on each tile (when the light supports them)</label>
 <div class="row"><label class="check"><input type="checkbox" data-field="brightness_slider" data-bool data-default-true ${c.brightness_slider !== false ? "checked" : ""}>Brightness slider</label><label class="check"><input type="checkbox" data-field="white_slider" data-bool data-default-true ${c.white_slider !== false ? "checked" : ""}>White warmth slider</label><label class="check"><input type="checkbox" data-field="color_swatches" data-bool data-explicit ${(c.color_swatches ?? (c.guest_mode === false)) ? "checked" : ""}>Color swatches${c.color_swatches === undefined && c.guest_mode !== false ? " (off in guest mode)" : ""}</label></div>
 <label>Guest mode switch — guest mode follows this helper, which automations, other dashboards and schedules can also use</label>
-<div class="row"><label>Switch entity<input type="text" list="f3s-bools" data-field="guest_mode_entity" value="${esc(c.guest_mode_entity || "")}" placeholder="input_boolean.guest_mode" data-key="dgm"></label>${c.guest_mode_entity ? "" : `<button data-act="guest-create" ${this._hass?.user?.is_admin ? "" : "disabled title=\"Administrators only\""}>${this._hass?.states?.["input_boolean.guest_mode"] ? "Use input_boolean.guest_mode" : "Create a Guest mode switch"}</button>`}</div>
+<div class="row"><label>Switch entity<input type="text" list="f3s-bools" data-field="guest_mode_entity" value="${esc(c.guest_mode_entity || "")}" placeholder="input_boolean.guest_mode" data-key="dgm"></label>${c.guest_mode_entity ? "" : `<button data-act="guest-create" ${this._guestBusy ? "disabled" : this._hass?.user?.is_admin ? "" : "disabled title=\"Administrators only\""}>${this._guestBusy ? "Working…" : this._hass?.states?.["input_boolean.guest_mode"] ? "Use input_boolean.guest_mode" : "Create a Guest mode switch"}</button>`}</div>
 ${this._msg?.guest ? `<p class="note ${this._msg.guest[0]}">${esc(this._msg.guest[1])}</p>` : ""}
 <datalist id="f3s-bools">${Object.keys(this._hass?.states || {}).filter((id) => /^(input_boolean|switch)\./.test(id)).sort().map((id) => `<option value="${esc(id)}">${esc(this._hass.states[id].attributes.friendly_name || "")}</option>`).join("")}</datalist>
 <label class="check"><input type="checkbox" data-field="guest_mode" data-bool data-default-true ${c.guest_mode !== false ? "checked" : ""}>Guest mode (used when no switch is set, or it is unavailable) — locks can only be locked, garage doors and gates only closed, alarms are read-only, TV volume is capped</label>
@@ -402,22 +402,39 @@ ${this._msg?.guest ? `<p class="note ${this._msg.guest[0]}">${esc(this._msg.gues
     if (act === "render") return this._renderSnapshot();
   }
 
-  /** Create (or reuse) input_boolean.guest_mode and point the card at it. */
+  /** Link a guest-mode helper: reuse one that already exists (by entity id, by the id it was
+   *  created with, or by its name), otherwise create one; then read back the entity id Home
+   *  Assistant actually gave it. Never creates a second one. */
   async _createGuestSwitch() {
-    const c = this._config;
+    if (this._guestBusy) return;
+    this._guestBusy = true; this._render();
+    const c = this._config, states = this._hass.states;
+    const named = (id) => /^input_boolean\./.test(id) && String(states[id]?.attributes?.friendly_name || "").trim().toLowerCase() === "guest mode";
     try {
-      let id = "input_boolean.guest_mode";
-      if (!this._hass.states[id]) {
-        const made = await this._hass.callWS({ type: "input_boolean/create", name: "Guest mode", icon: "mdi:account-lock-outline", initial: c.guest_mode !== false });
-        id = `input_boolean.${made?.id || "guest_mode"}`;
-        // start in the state the card is in now, so nothing changes for guests
-        if (c.guest_mode !== false) await this._hass.callService("input_boolean", "turn_on", { entity_id: id }).catch(() => {});
+      let registry = [];
+      try { registry = await this._hass.callWS({ type: "config/entity_registry/list" }); } catch { /* not an administrator */ }
+      const bools = registry.filter((e) => e.platform === "input_boolean");
+      let id = states["input_boolean.guest_mode"] ? "input_boolean.guest_mode"
+        : bools.find((e) => e.unique_id === "guest_mode")?.entity_id
+        || Object.keys(states).find(named);
+      let made = false;
+      if (!id) {
+        const item = await this._hass.callWS({ type: "input_boolean/create", name: "Guest mode", icon: "mdi:account-lock-outline", initial: c.guest_mode !== false });
+        made = true;
+        // the entity id can differ from the item id (guest_mode_2 if guest_mode was taken)
+        for (let n = 0; n < 20 && !id; n++) {
+          try { id = (await this._hass.callWS({ type: "config/entity_registry/list" })).find((e) => e.platform === "input_boolean" && e.unique_id === item?.id)?.entity_id; } catch { break; }
+          if (!id) await new Promise((r) => setTimeout(r, 150));
+        }
+        id ||= `input_boolean.${item?.id || "guest_mode"}`;
+        // start in the card's current state, so nothing changes for guests
+        await this._hass.callService("input_boolean", c.guest_mode !== false ? "turn_on" : "turn_off", { entity_id: id }).catch(() => {});
       }
       c.guest_mode_entity = id;
-      this._msg = { guest: ["", `Guest mode now follows ${id}. Turn it on or off from any dashboard, automation or schedule; on this card, administrators also get a Guest mode chip beside the title.`] };
+      this._msg = { guest: ["", `${made ? "Created" : "Linked"} ${id}. Guest mode now follows it: turn it on or off from any dashboard, automation or schedule. Administrators also get a Guest mode chip beside the card's title.`] };
     } catch (err) {
-      this._msg = { guest: ["err", `Couldn't create the helper (${err.message || err.code || err}). Create a Toggle helper named “Guest mode” under Settings → Devices & services → Helpers, then pick it here.`] };
-    }
+      this._msg = { guest: ["err", `Couldn't create the helper (${err.message || err.code || err}). Create a Toggle helper named “Guest mode” under Settings → Devices & services → Helpers, then enter it here.`] };
+    } finally { this._guestBusy = false; }
     this._emit();
   }
 
