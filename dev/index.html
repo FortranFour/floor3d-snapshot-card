@@ -58,13 +58,18 @@ const hass = {
     if (msg.type === "lovelace/dashboards/list") return [{ url_path: "dashboard-main", title: "Main", mode: "storage" }];
     if (msg.type === "lovelace/config") { if (msg.url_path === "dashboard-main") return JSON.parse(JSON.stringify(dashboard)); return { views: [] }; }
     if (msg.type === "image/delete") return null;
+    if (msg.type === "input_boolean/create") {
+      const id = String(msg.name || "toggle").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      hass.states = { ...hass.states, [`input_boolean.${id}`]: { entity_id: `input_boolean.${id}`, state: msg.initial ? "on" : "off", attributes: { friendly_name: msg.name, icon: msg.icon } } };
+      push(); return { id, name: msg.name, icon: msg.icon };
+    }
     throw Object.assign(new Error("unknown command"), { code: "unknown_command" });
   },
   fetchWithAuth: (url, init) => fetch(url, init),
   callService: async (domain, service, data) => {
     calls.push({ domain, service, data });
     const id = data.entity_id, s = { ...hass.states[id], attributes: { ...hass.states[id].attributes } };
-    if (service === "turn_on") s.state = "on"; if (service === "turn_off") s.state = "off";
+    if (service === "turn_on") s.state = "on"; if (service === "turn_off") s.state = "off"; if (service === "toggle") s.state = s.state === "on" ? "off" : "on";
     if (service === "set_percentage") { s.state = "on"; s.attributes.percentage = data.percentage; }
     if (data.brightness_pct) s.attributes.brightness = Math.round(data.brightness_pct * 2.55);
     if (service === "volume_set") s.attributes.volume_level = data.volume_level;

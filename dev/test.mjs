@@ -293,6 +293,32 @@ await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()
   await page.setViewportSize({ width: 1500, height: 1000 }); await page.waitForTimeout(300);
   check(narrow, "on a phone-width card the status wraps under the title");
 }
+// 12e. a guest-mode switch: created from the editor, followed by the card, flipped by an admin chip
+{
+  const t = await page.evaluate(() => { const c = window.harness.getConfig(), all = c.rooms.flatMap((r) => (r.entities || []).flatMap((e) => [e.entity, e.dimmer].filter(Boolean))); for (const [i, r] of c.rooms.entries()) { const j = (r.entities || []).findIndex((e) => all.filter((x) => x === e.entity).length === 1); if (j >= 0) { r.entities[j].guest_hidden = true; window.harness.setConfig(c); return { i, id: r.id, ent: r.entities[j].entity }; } } return null; });
+  await page.evaluate(() => { window.harness.editor._open.display = true; window.harness.editor._render(); });
+  await clickEd('[data-act="guest-create"]');
+  await page.waitForFunction(() => window.harness.getConfig().guest_mode_entity, null, { timeout: 5000 });
+  const gid = await page.evaluate(() => window.harness.getConfig().guest_mode_entity);
+  await page.evaluate((t) => window.harness.card._select(t.id), t);
+  const shown = () => page.evaluate((t) => [...window.harness.card.shadowRoot.querySelectorAll(".tile [data-entity]")].some((x) => x.dataset.entity === t.ent), t);
+  const setG = (state) => page.evaluate(([gid, state]) => { const h = window.harness.hass; h.states = { ...h.states, [gid]: { ...h.states[gid], state } }; window.harness.push(); }, [gid, state]);
+  await page.waitForTimeout(250); const onHidden = !(await shown());
+  await setG("off"); await page.waitForTimeout(250); const offShown = await shown();
+  await setG("unavailable"); await page.waitForTimeout(250); const fallbackHidden = !(await shown());
+  await setG("on"); await page.waitForTimeout(250);
+  check(gid === "input_boolean.guest_mode" && onHidden && offShown && fallbackHidden, "guest mode follows the created switch, and falls back to the card's setting if it's unavailable", JSON.stringify({ gid, onHidden, offShown, fallbackHidden }));
+  const chip = await page.evaluate(() => window.harness.card.shadowRoot.querySelector('.schip.guest')?.textContent || "");
+  await page.evaluate(() => window.harness.card.shadowRoot.querySelector('.schip.guest').click());
+  await page.waitForTimeout(250);
+  const flipped = await page.evaluate((gid) => window.harness.hass.states[gid].state, gid);
+  await page.evaluate(() => { window.harness.hass.user = { is_admin: false }; window.harness.push(); window.harness.card._request(); });
+  await page.waitForTimeout(250);
+  const guestSees = await page.evaluate(() => !!window.harness.card.shadowRoot.querySelector('.schip.guest'));
+  await page.evaluate(() => { window.harness.hass.user = { is_admin: true }; window.harness.push(); });
+  check(/Guest mode on/.test(chip) && flipped === "off" && !guestSees, "administrators get a Guest mode chip that flips the switch; others don't see it", JSON.stringify({ chip, flipped, guestSees }));
+  await page.evaluate((t) => { const c = structuredClone(window.harness.getConfig()); delete c.guest_mode_entity; delete c.rooms[t.i].entities.find((e) => e.entity === t.ent).guest_hidden; window.harness.setConfig(c); }, t);
+}
 // 13. detecting again: missing entities come back, ones removed with ✕ stay out until restored
 {
   const r0 = await page.evaluate(() => { const c = window.harness.getConfig(); const i = c.rooms.findIndex((r) => (r.entities || []).length >= 2 && r.floors?.length); return { i, a: c.rooms[i].entities[0].entity, b: c.rooms[i].entities[1].entity, id: c.rooms[i].id }; });

@@ -34,7 +34,7 @@ const STYLE = `
 :host{display:block;--f3s-blue:rgb(var(--rgb-primary-color,3,169,244));--f3s-ink:var(--primary-text-color,#233246);--f3s-muted:var(--secondary-text-color,#677587);--f3s-surface:var(--ha-card-background,var(--card-background-color,#fff));--f3s-line:rgba(var(--rgb-primary-text-color,33,33,33),.1);--f3s-amber:#dfac2a}
 *{box-sizing:border-box}button,input{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}button:disabled{cursor:default;opacity:.45}button:focus-visible,input:focus-visible{outline:3px solid var(--f3s-blue);outline-offset:3px}ha-icon{width:22px;height:22px;flex:none;color:inherit}
 ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
-.head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px 16px;margin:0 2px 10px}.head .titles{flex:1 1 220px;min-width:0}.status{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 1 auto;min-width:0}.when{color:var(--f3s-muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.schips{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.schip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 11px 4px 9px;border:1px solid var(--f3s-line);border-radius:16px;background:var(--f3s-surface);color:var(--f3s-ink);font-size:13px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.04)}.schip ha-icon{width:18px;height:18px;color:var(--f3s-blue)}.schip[aria-disabled=true]{cursor:default}
+.head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px 16px;margin:0 2px 10px}.head .titles{flex:1 1 220px;min-width:0}.status{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 1 auto;min-width:0}.when{color:var(--f3s-muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.schips{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.schip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 11px 4px 9px;border:1px solid var(--f3s-line);border-radius:16px;background:var(--f3s-surface);color:var(--f3s-ink);font-size:13px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.04)}.schip ha-icon{width:18px;height:18px;color:var(--f3s-blue)}.schip[aria-disabled=true]{cursor:default}.schip.guest{color:var(--f3s-muted)}.schip.guest[aria-pressed=true]{color:var(--f3s-ink);border-color:rgba(var(--rgb-primary-color,3,169,244),.45);background:rgba(var(--rgb-primary-color,3,169,244),.07)}
 :host(.narrow) .status{flex:1 1 100%;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}:host(.narrow) .schips{justify-content:flex-start}:host(.narrow) .when{flex:1 1 100%}.head h2{margin:0;font-size:20px;font-weight:500;letter-spacing:-.3px}.head p{margin:2px 0 0;color:var(--f3s-muted);font-size:13px}
 .layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:16px;align-items:start}:host(.stacked) .layout{grid-template-columns:minmax(0,1fr)}.layout>*{min-width:0}
 .map{position:relative;width:min(100%,calc((100vh - 260px) * var(--aspect,1.2)));min-width:min(100%,280px);margin:0 auto;aspect-ratio:var(--aspect,1.2);-webkit-user-select:none;user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:default}.map.hovering{cursor:pointer}
@@ -91,7 +91,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (!ids.includes(this._room)) this._room = ids.includes(config.default_room) ? config.default_room : ids[0];
     this._followEditor();
     this._mapEl = null; this._index = null; this._tintKey = ""; this._light = null; this._direct = null; this._shadeKey = ""; this._directKey = ""; this._sunKey = "";
-    this._entities = new Set(rooms.flatMap((r) => this._ents(r).flatMap((e) => [e.entity, ...(e.dimmer ? [e.dimmer] : [])])));
+    this._allowAll();
     this._request();
   }
   set hass(hass) {
@@ -100,7 +100,8 @@ export class Floor3dSnapshotCard extends HTMLElement {
     this.classList.toggle("dark", !!hass?.themes?.darkMode);
     const theme = `${hass?.themes?.theme}|${hass?.themes?.darkMode}`;
     if (theme !== this._theme) { this._theme = theme; this._primary = ""; this._tintKey = ""; }
-    const watch = [this._config?.weather_entity, this._config?.indoor_entity].filter(Boolean);
+    if (this._config && this._guest() !== this._guestNow) this._allowAll();   // the guest-mode switch flipped
+    const watch = [this._config?.weather_entity, this._config?.indoor_entity, this._config?.guest_mode_entity].filter(Boolean);
     if (!old || [...this._entities, ...watch].some((id) => old.states[id] !== hass.states[id])) this._request();
     if (!old) this._updateSun();
   }
@@ -161,8 +162,21 @@ export class Floor3dSnapshotCard extends HTMLElement {
   // ---- state helpers --------------------------------------------------------
   _s(id) { return this._hass?.states?.[id]; }
   _room_(id = this._room) { return this._config.rooms.find((r) => r.id === id); }
+  /** Guest mode: the guest-mode switch (guest_mode_entity) when set and available, else the
+   *  card's own guest_mode (on unless set to false). */
+  _guest() {
+    const id = this._config?.guest_mode_entity, s = id ? this._s(id) : null;
+    if (s && available(s)) return s.state === "on";
+    return this._config?.guest_mode !== false;
+  }
+  /** The entities the card may control, as shown now (guest mode hides some). */
+  _allowAll() {
+    const rooms = this._config?.rooms || [];
+    this._guestNow = this._guest();
+    this._entities = new Set(rooms.flatMap((r) => this._ents(r).flatMap((e) => [e.entity, ...(e.dimmer ? [e.dimmer] : [])])));
+  }
   /** A room's entities as shown: in guest mode, without those marked guest_hidden. */
-  _ents(room) { const g = this._config?.guest_mode !== false; return (room?.entities || []).filter((e) => !(g && e.guest_hidden)); }
+  _ents(room) { const g = this._guest(); return (room?.entities || []).filter((e) => !(g && e.guest_hidden)); }
   _activeCount(room) { return this._ents(room).filter((e) => ACTIVE_DOMAINS.has(domainOf(e.entity)) && isOn(this._s(e.entity))).length; }
   _name(e, room = this._room_()) {
     if (e.name) return e.name;
@@ -221,13 +235,18 @@ export class Floor3dSnapshotCard extends HTMLElement {
         parts.push(this._statusChip(c.weather_entity, ic, t ? `${label} · ${t}` : label));
       }
     }
+    // the guest-mode switch, for administrators only: guests never see or reach it
+    if (c.guest_mode_entity && this._hass?.user?.is_admin && available(this._s(c.guest_mode_entity))) {
+      const on = this._guest();
+      parts.push(`<button class="schip guest" data-action="guest-toggle" data-focus="s-guest" aria-pressed="${on}" title="Guest mode (${esc(c.guest_mode_entity)}); only administrators see this">${icon(on ? "mdi:account-lock-outline" : "mdi:account-lock-open-outline")}<span>Guest mode ${on ? "on" : "off"}</span></button>`);
+    }
     const clock = c.clock ? `<span class="when" aria-live="off">${esc(this._when())}</span>` : "";
     if (c.clock) this._tick();
     return parts.length || clock ? `<div class="status">${clock}${parts.length ? `<div class="schips">${parts.join("")}</div>` : ""}</div>` : "";
   }
   _statusChip(entity, ic, text) {
     // read-only information: a tap opens Home Assistant's details, except a thermostat in guest mode
-    const open = !(this._config.guest_mode !== false && domainOf(entity) === "climate");
+    const open = !(this._guest() && domainOf(entity) === "climate");
     return `<button class="schip" ${open ? `data-action="more-info" data-entity="${esc(entity)}"` : 'tabindex="-1" aria-disabled="true"'} data-focus="s-${esc(entity)}">${icon(ic)}<span>${esc(text)}</span></button>`;
   }
   _when(d = new Date()) {
@@ -253,7 +272,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
   }
 
   _tile(e) {
-    const id = e.entity, s = this._s(id), d = domainOf(id), a = s?.attributes || {}, g = this._config.guest_mode !== false;
+    const id = e.entity, s = this._s(id), d = domainOf(id), a = s?.attributes || {}, g = this._guest();
     const name = esc(this._name(e)), ic = icon(this._icon(e));
     const busy = this._busy.has(id);
     const dis = !available(s) || busy ? "disabled" : "";
@@ -277,7 +296,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
       const want = Array.isArray(e.controls) ? new Set(e.controls) : new Set([
         ...(c.brightness_slider !== false ? ["brightness"] : []),
         ...(c.white_slider !== false ? ["white"] : []),
-        ...((c.color_swatches ?? (c.guest_mode === false)) ? ["color"] : []),
+        ...((c.color_swatches ?? !this._guest()) ? ["color"] : []),
       ]);
       const parts = [];
       if (want.has("brightness") && dimmable) parts.push(["Brightness", `<input class="range" type="range" min="1" max="100" value="${pct}" data-action="brightness" data-entity="${esc(dimId)}" data-focus="b-${esc(id)}" aria-label="${name} brightness">`]);
@@ -333,7 +352,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (d === "sensor") return `${s.state}${a.unit_of_measurement ? ` ${a.unit_of_measurement}` : ""}`;
     if (d === "binary_sensor") return isOn(s) ? "Detected" : "Clear";
     if (["scene", "script", "button", "input_button"].includes(d)) return "Tap to run";
-    if (d === "lock" && s.state === "unlocked") return this._config.guest_mode !== false ? "Unlocked · tap to lock" : "Unlocked";
+    if (d === "lock" && s.state === "unlocked") return this._guest() ? "Unlocked · tap to lock" : "Unlocked";
     return titleCase(String(s.state).replace(/_/g, " "));
   }
 
@@ -533,8 +552,14 @@ export class Floor3dSnapshotCard extends HTMLElement {
   _showToast(text) { this._toast = text; clearTimeout(this._toastTimer); this._toastTimer = setTimeout(() => { this._toast = ""; this._request(); }, 5000); this._request(); }
   _click(ev) {
     const b = ev.target.closest("button[data-action]"); if (!b || b.disabled) return;
-    const { action, entity: id, room } = b.dataset, s = this._s(id), d = domainOf(id), g = this._config.guest_mode !== false;
+    const { action, entity: id, room } = b.dataset, s = this._s(id), d = domainOf(id), g = this._guest();
     if (action === "room") { if (this._room_(room)) this._select(room); return; }
+    if (action === "guest-toggle") {
+      const gid = this._config.guest_mode_entity;
+      if (!gid || !this._hass?.user?.is_admin) return;
+      this._hass.callService(domainOf(gid) === "switch" ? "switch" : "input_boolean", "toggle", { entity_id: gid }).catch(() => this._showToast("Couldn't change guest mode."));
+      return;
+    }
     if (action === "more-info") { this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: b.dataset.entity }, bubbles: true, composed: true })); return; }
     if (action === "labels") { this._labels = !this._labels; try { localStorage.setItem("floor3d-snapshot-labels", this._labels ? "1" : "0"); } catch { /* private */ } this._request(); return; }
     if (action === "room-off") {
@@ -579,7 +604,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (i.dataset.action === "brightness") this._call(id, "light", "turn_on", { brightness_pct: Number(i.value) });
     if (i.dataset.action === "kelvin") this._call(id, "light", "turn_on", { color_temp_kelvin: Number(i.value) });
     if (i.dataset.action === "volume") {
-      const cap = Math.min(1, Number(this._config.max_volume ?? (this._config.guest_mode !== false ? 0.6 : 1)));
+      const cap = Math.min(1, Number(this._config.max_volume ?? (this._guest() ? 0.6 : 1)));
       this._call(id, "media_player", "volume_set", { volume_level: Math.min(cap, Number(i.value)) });
     }
   }

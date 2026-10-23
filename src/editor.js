@@ -281,7 +281,11 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
 <div class="row"><label>Room buttons under the map<select data-field="room_list" data-key="dl2">${[["", "Rooms the map can't show"], ["always", "All rooms"], ["never", "Never"]].map(([v, t]) => `<option value="${v}" ${(c.room_list || "") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label></div>
 <label>Light controls on each tile (when the light supports them)</label>
 <div class="row"><label class="check"><input type="checkbox" data-field="brightness_slider" data-bool data-default-true ${c.brightness_slider !== false ? "checked" : ""}>Brightness slider</label><label class="check"><input type="checkbox" data-field="white_slider" data-bool data-default-true ${c.white_slider !== false ? "checked" : ""}>White warmth slider</label><label class="check"><input type="checkbox" data-field="color_swatches" data-bool data-explicit ${(c.color_swatches ?? (c.guest_mode === false)) ? "checked" : ""}>Color swatches${c.color_swatches === undefined && c.guest_mode !== false ? " (off in guest mode)" : ""}</label></div>
-<label class="check"><input type="checkbox" data-field="guest_mode" data-bool data-default-true ${c.guest_mode !== false ? "checked" : ""}>Guest mode — locks can only be locked, garage doors and gates only closed, alarms are read-only, TV volume is capped</label>
+<label>Guest mode switch — guest mode follows this helper, which automations, other dashboards and schedules can also use</label>
+<div class="row"><label>Switch entity<input type="text" list="f3s-bools" data-field="guest_mode_entity" value="${esc(c.guest_mode_entity || "")}" placeholder="input_boolean.guest_mode" data-key="dgm"></label>${c.guest_mode_entity ? "" : `<button data-act="guest-create" ${this._hass?.user?.is_admin ? "" : "disabled title=\"Administrators only\""}>${this._hass?.states?.["input_boolean.guest_mode"] ? "Use input_boolean.guest_mode" : "Create a Guest mode switch"}</button>`}</div>
+${this._msg?.guest ? `<p class="note ${this._msg.guest[0]}">${esc(this._msg.guest[1])}</p>` : ""}
+<datalist id="f3s-bools">${Object.keys(this._hass?.states || {}).filter((id) => /^(input_boolean|switch)\./.test(id)).sort().map((id) => `<option value="${esc(id)}">${esc(this._hass.states[id].attributes.friendly_name || "")}</option>`).join("")}</datalist>
+<label class="check"><input type="checkbox" data-field="guest_mode" data-bool data-default-true ${c.guest_mode !== false ? "checked" : ""}>Guest mode (used when no switch is set, or it is unavailable) — locks can only be locked, garage doors and gates only closed, alarms are read-only, TV volume is capped</label>
 <div class="row"><label>Max volume (0–1)<input type="number" min="0" max="1" step="0.05" data-field="max_volume" data-num value="${esc(c.max_volume ?? "")}" placeholder="${c.guest_mode !== false ? "0.6" : "1"}" data-key="dv"></label><label>Thermostat min<input type="number" data-field="temperature_range.0" data-num value="${esc(c.temperature_range?.[0] ?? "")}" data-key="dmin"></label><label>Thermostat max<input type="number" data-field="temperature_range.1" data-num value="${esc(c.temperature_range?.[1] ?? "")}" data-key="dmax"></label></div>
 <p class="note">A dashboard is not a security boundary: give guests a non-admin Home Assistant user, and use Home Assistant permissions for anything that must be enforced.</p>`;
   }
@@ -386,6 +390,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     }
     if (act === "ent-up" && j) { const e = rooms[i].entities; [e[j - 1], e[j]] = [e[j], e[j - 1]]; return this._emit(); }
     if (act === "anchor-pick") { rooms[i].anchor = { model: Number(d.model) || 0, object: d.obj }; return this._emit(); }
+    if (act === "guest-create") return this._createGuestSwitch();
     if (act === "preview") return this._previewOpen ? this._closePreview(true) : this._openPreview();
     if (act === "view-reset" || act === "view-top") {
       c.view = { ...(c.view || {}), ...(act === "view-top" ? { azimuth: 0, elevation: 90, roll: 0 } : VIEW_RESET) };
@@ -395,6 +400,25 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     if (act === "sun-live") { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); return this._render(); }
     if (act === "detect") return this._detect();
     if (act === "render") return this._renderSnapshot();
+  }
+
+  /** Create (or reuse) input_boolean.guest_mode and point the card at it. */
+  async _createGuestSwitch() {
+    const c = this._config;
+    try {
+      let id = "input_boolean.guest_mode";
+      if (!this._hass.states[id]) {
+        const made = await this._hass.callWS({ type: "input_boolean/create", name: "Guest mode", icon: "mdi:account-lock-outline", initial: c.guest_mode !== false });
+        id = `input_boolean.${made?.id || "guest_mode"}`;
+        // start in the state the card is in now, so nothing changes for guests
+        if (c.guest_mode !== false) await this._hass.callService("input_boolean", "turn_on", { entity_id: id }).catch(() => {});
+      }
+      c.guest_mode_entity = id;
+      this._msg = { guest: ["", `Guest mode now follows ${id}. Turn it on or off from any dashboard, automation or schedule; on this card, administrators also get a Guest mode chip beside the title.`] };
+    } catch (err) {
+      this._msg = { guest: ["err", `Couldn't create the helper (${err.message || err.code || err}). Create a Toggle helper named “Guest mode” under Settings → Devices & services → Helpers, then pick it here.`] };
+    }
+    this._emit();
   }
 
   // ---- 3D preview -------------------------------------------------------------

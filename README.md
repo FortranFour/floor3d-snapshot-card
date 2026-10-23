@@ -171,6 +171,7 @@ brightness_slider: true    # light controls on tiles (default on)
 white_slider: true
 color_swatches: false      # default: off in guest mode, on otherwise
 guest_mode: true
+guest_mode_entity: input_boolean.guest_mode   # guest mode follows this switch (falls back to guest_mode)
 max_volume: 0.6
 temperature_range: [64, 78]
 snapshot:                  # written by the editor's Render button
@@ -203,6 +204,12 @@ The editor loads three.js (only for you, while editing) and renders the model wi
 With sunlight on, the picture is rendered with even, overhead light, and a third pass bakes camera depth and surface direction at half resolution. On the viewer's device, the card computes the sun's azimuth and elevation, shades each surface by its angle to the sun, and traces shadows across the depth image toward the sun. It multiplies the result, tinted for the time of day, over the picture.
 
 Images go to Home Assistant's built-in image store (`/api/image/upload`, served from `/api/image/serve/…`), the same place the picture-card editor uploads to; re-rendering deletes the previous pair. Choose *Embed in this dashboard* under *Snapshot → Advanced* to store them in the card configuration instead.
+
+## Guest mode switch
+
+Guest mode can follow a Home Assistant switch instead of a fixed setting. In *Display*, press **Create a Guest mode switch**: the editor creates the toggle helper `input_boolean.guest_mode` (in the card's current state, so nothing changes for guests) and points the card at it. Any toggle helper or switch can be picked instead. From then on, turn guest mode on or off from anywhere in Home Assistant: another dashboard, an automation (when a guest's phone arrives, on a calendar booking), a schedule or a voice assistant. Administrators also get a *Guest mode* chip beside the card's title that flips it; other users don't see that chip. If the switch is unavailable, the card falls back to its own *Guest mode* setting, which is on by default.
+
+The switch is an ordinary entity, so don't put it on a dashboard your guests use, and give guests a non-administrator account (see below).
 
 ## Security
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 — 2026-10-23
+
+- **Guest mode switch.** `guest_mode_entity` (an `input_boolean` or `switch`) drives guest mode, so dashboards, automations, schedules and voice assistants can turn it on and off; if the switch is unavailable, the card falls back to `guest_mode`. *Display → Create a Guest mode switch* creates `input_boolean.guest_mode` (in the card's current state) and links it. Administrators see a *Guest mode on/off* chip beside the title that flips it; other users don't. Every guest-mode rule (limits, hidden entities, color default, volume cap) follows the switch live.
+
 ## 0.10.0 — 2026-10-23
 
 - **Header status.** Optional indoor temperature (`indoor_entity`: a temperature sensor, or a climate entity's current temperature), weather (`weather_entity`: condition and temperature, with a matching icon) and date and time (`clock: true`, updated on the minute), in chips beside the title. On a narrow card (below 560 px, e.g. a phone), they wrap onto their own row under the title. Tapping a chip opens Home Assistant's details, except a thermostat in guest mode. Set in *Display*, with suggestions of your weather and temperature entities.
