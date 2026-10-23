@@ -200,6 +200,18 @@ await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()
 // 10. the floor3d card's text and picture panels are picked up from its bindings
 const panelInfo = await page.evaluate(() => { const c = window.harness.getConfig(), ed = window.harness.editor; return { models: c.models.map((m) => (m.panels || []).length), bound: c.models.map((m) => (ed._floor3d[m.url]?.entities || []).filter((e) => e.type3d === "text" || e.type3d === "image").length), label: ed.shadowRoot.querySelector('input[data-field="view.hide_panels"]')?.closest("label")?.textContent || "" }; });
 check(panelInfo.models.every((n, i) => (n > 0) === (panelInfo.bound[i] > 0)), "text and picture panels recorded per model from the floor3d card", JSON.stringify(panelInfo));
+// 11. a switch with a dimmer (the bulb behind it) gets a brightness slider that drives the bulb
+const dimInfo = await page.evaluate(() => { const c = window.harness.getConfig(); return c.rooms.flatMap((r) => (r.entities || []).filter((e) => e.dimmer).map((e) => `${e.entity}→${e.dimmer}`)); });
+console.log("      dimmers from floor3d color_entity:", dimInfo.join(", ") || "none");
+const sw = await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); const room = c.rooms.find((r) => (r.entities || []).some((e) => /^switch\./.test(e.entity))) || c.rooms[0]; let e = room.entities.find((x) => /^switch\./.test(x.entity)); if (!e) { e = { entity: "switch.test_wall_switch" }; room.entities.push(e); } e.dimmer = e.dimmer || "light.test_bulb_behind_switch"; const h = window.harness.hass; h.states = { ...h.states, [e.entity]: { entity_id: e.entity, state: "on", attributes: { friendly_name: "Test Switch" } }, [e.dimmer]: { entity_id: e.dimmer, state: "on", attributes: { friendly_name: "Bulb", brightness: 204, supported_color_modes: ["brightness"] } } }; window.harness.setConfig(c); window.harness.push(); window.harness.card._select(room.id); return { room: room.id, entity: e.entity, dimmer: e.dimmer }; });
+await page.waitForTimeout(300);
+const slider = await page.evaluate((sw) => { const r = window.harness.card.shadowRoot.querySelector(`input[data-action="brightness"][data-entity="${sw.dimmer}"]`); return r ? { value: r.value, state: r.closest(".tile").querySelector(".tstate").textContent } : null; }, sw);
+check(slider && slider.value === "80" && /80%/.test(slider.state), "a switch with a dimmer shows the bulb's brightness slider", JSON.stringify(slider));
+const nCalls = await page.evaluate(() => window.harness.calls.length);
+await page.evaluate((sw) => { const r = window.harness.card.shadowRoot.querySelector(`input[data-action="brightness"][data-entity="${sw.dimmer}"]`); r.value = "40"; r.dispatchEvent(new Event("change", { bubbles: true })); }, sw);
+await page.waitForTimeout(200);
+const dimCall = await page.evaluate(() => window.harness.calls.at(-1));
+check(dimCall?.domain === "light" && dimCall.data.entity_id === sw.dimmer && dimCall.data.brightness_pct === 40 && (await page.evaluate(() => window.harness.calls.length)) === nCalls + 1, "the slider sets the bulb's brightness", JSON.stringify(dimCall));
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);

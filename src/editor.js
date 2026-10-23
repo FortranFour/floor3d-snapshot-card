@@ -45,7 +45,7 @@ button{font:inherit;cursor:pointer;min-height:36px;padding:6px 12px;border-radiu
 .item{border:1px solid var(--divider-color,rgba(127,127,127,.2));border-radius:10px;padding:8px 10px;margin:8px 0}.item .title{display:flex;align-items:center;gap:8px}.item .title b{flex:1;font-weight:500;overflow-wrap:anywhere}
 .room>summary{padding:10px 12px}.room{margin:8px 0}.room .body{padding:0 12px 12px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;border-radius:14px;background:var(--secondary-background-color,rgba(127,127,127,.12));font-size:12px}.chip button{min-height:24px;padding:0 6px;border:0}
-.ent{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin:6px 0}.ent .tools{display:flex;gap:2px}
+.ent{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin:6px 0}.ent.dim{grid-template-columns:1fr;margin:-2px 0 10px 14px}.ent .tools{display:flex;gap:2px}
 .preview{position:relative;margin:10px 0;border-radius:10px;overflow:hidden;background:var(--secondary-background-color,rgba(127,127,127,.08))}.preview img{display:block;width:100%;-webkit-mask-size:100% 100%;mask-size:100% 100%}
 ha-icon{--mdc-icon-size:20px;width:20px;height:20px;color:var(--secondary-text-color)}
 .found{max-height:220px;overflow:auto}
@@ -123,7 +123,7 @@ ${c.rooms.map((r, i) => this._roomEditor(r, i)).join("")}`;
 <div class="row"><label>Add floor object<input type="text" list="f3s-objects" placeholder="room_3_1" data-key="rf${i}" id="floor-${i}"></label>${multi ? `<label style="max-width:110px">Model<select id="floor-model-${i}">${this._config.models.map((_, m) => `<option value="${m}">${m + 1}</option>`).join("")}</select></label>` : ""}<button data-act="floor-add" data-i="${i}">Add</button></div>
 ${(r.floors || []).length ? "" : this._anchorEditor(r, i, multi)}
 <label>Entities</label>
-${ents.map((e, j) => `<div class="ent"><label>Entity<input type="text" list="f3s-entities" data-field="rooms.${i}.entities.${j}.entity" value="${esc(e.entity)}" data-key="re${i}-${j}"></label><label>Label<input type="text" data-field="rooms.${i}.entities.${j}.name" value="${esc(e.name || "")}" placeholder="${esc(this._hass?.states[e.entity]?.attributes?.friendly_name || "")}" data-key="rl${i}-${j}"></label><div class="tools"><button class="icon" data-act="ent-up" data-i="${i}" data-j="${j}" ${j ? "" : "disabled"} title="Move up">↑</button><button class="icon" data-act="ent-remove" data-i="${i}" data-j="${j}" title="Remove">✕</button></div></div>${this._hass && e.entity && !this._hass.states[e.entity] ? `<p class="note warn">${esc(e.entity)} doesn't exist.</p>` : ""}`).join("")}
+${ents.map((e, j) => `<div class="ent"><label>Entity<input type="text" list="f3s-entities" data-field="rooms.${i}.entities.${j}.entity" value="${esc(e.entity)}" data-key="re${i}-${j}"></label><label>Label<input type="text" data-field="rooms.${i}.entities.${j}.name" value="${esc(e.name || "")}" placeholder="${esc(this._hass?.states[e.entity]?.attributes?.friendly_name || "")}" data-key="rl${i}-${j}"></label><div class="tools"><button class="icon" data-act="ent-up" data-i="${i}" data-j="${j}" ${j ? "" : "disabled"} title="Move up">↑</button><button class="icon" data-act="ent-remove" data-i="${i}" data-j="${j}" title="Remove">✕</button></div></div>${e.dimmer || /^(switch|input_boolean)\./.test(e.entity || "") ? `<div class="ent dim"><label>Dimmer — the light behind this switch, for brightness<input type="text" list="f3s-entities" data-field="rooms.${i}.entities.${j}.dimmer" value="${esc(e.dimmer || "")}" placeholder="light.… (optional)" data-key="rd${i}-${j}"></label></div>` : ""}${this._hass && e.entity && !this._hass.states[e.entity] ? `<p class="note warn">${esc(e.entity)} doesn't exist.</p>` : ""}${this._hass && e.dimmer && !this._hass.states[e.dimmer] ? `<p class="note warn">${esc(e.dimmer)} doesn't exist.</p>` : ""}`).join("")}
 <div class="row"><label>Add entity<input type="text" list="f3s-entities" placeholder="light.kitchen" data-key="ra-${i}" id="ent-${i}"></label><button data-act="ent-add" data-i="${i}">Add</button></div>
 <div class="row"><button class="icon" data-act="room-up" data-i="${i}" ${i ? "" : "disabled"}>↑ Move up</button><button class="icon" data-act="room-down" data-i="${i}" ${i < n - 1 ? "" : "disabled"}>↓ Move down</button><button class="icon" data-act="room-remove" data-i="${i}">Delete room</button></div>
 </div></details>`;
@@ -392,11 +392,11 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
             if (!found.some((f) => f.url === url)) {
               const groups = {};
               for (const g of node.object_groups || []) groups[g.object_group] = (g.objects || []).map((o) => o.object_id);
-              found.push({ url, mtl: node.mtlfile ? `${node.path || ""}${node.mtlfile}` : undefined, look: THEME_NAMES.includes(String(node.look?.theme || "").toLowerCase()) ? String(node.look.theme).toLowerCase() : undefined, accent: node.look?.accent, custom: node.look?.custom && typeof node.look.custom === "object" ? node.look.custom : undefined, north: northDegrees(node.north), label: `${b.title || b.url_path || "Dashboard"} › ${view || "view"} · ${node.type.replace("custom:", "")}`, entities: (node.entities || []).filter((e) => typeof e.entity === "string" && typeof e.object_id === "string").map(({ entity, object_id, type3d }) => ({ entity, object_id, ...(type3d ? { type3d } : {}) })), groups });
+              found.push({ url, mtl: node.mtlfile ? `${node.path || ""}${node.mtlfile}` : undefined, look: THEME_NAMES.includes(String(node.look?.theme || "").toLowerCase()) ? String(node.look.theme).toLowerCase() : undefined, accent: node.look?.accent, custom: node.look?.custom && typeof node.look.custom === "object" ? node.look.custom : undefined, north: northDegrees(node.north), label: `${b.title || b.url_path || "Dashboard"} › ${view || "view"} · ${node.type.replace("custom:", "")}`, entities: (node.entities || []).filter((e) => typeof e.entity === "string" && typeof e.object_id === "string").map(({ entity, object_id, type3d, color_entity }) => ({ entity, object_id, ...(type3d ? { type3d } : {}), ...(typeof color_entity === "string" ? { color_entity } : {}) })), groups });
             } else {
               // A second card on the same model adds its entities too.
               const f = found.find((x) => x.url === url);
-              for (const e of node.entities || []) if (e.entity && e.object_id && !f.entities.some((x) => x.entity === e.entity && x.object_id === e.object_id)) f.entities.push({ entity: e.entity, object_id: e.object_id, ...(e.type3d ? { type3d: e.type3d } : {}) });
+              for (const e of node.entities || []) if (e.entity && e.object_id && !f.entities.some((x) => x.entity === e.entity && x.object_id === e.object_id)) f.entities.push({ entity: e.entity, object_id: e.object_id, ...(e.type3d ? { type3d: e.type3d } : {}), ...(typeof e.color_entity === "string" ? { color_entity: e.color_entity } : {}) });
             }
           }
           for (const [k, v] of Object.entries(node)) walk(v, k === "views" ? view : (node.title && node.cards ? node.title : view));
@@ -413,7 +413,13 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       const panels = panelsOf(f);
       if (JSON.stringify(panels) !== JSON.stringify(m.panels || [])) { if (panels.length) m.panels = panels; else delete m.panels; changed = true; }
     }
-    if (changed) { this._session = null; return this._emit(); }
+    if (changed) this._session = null;
+    // a switch whose floor3d binding names a color_entity (the bulb behind it) gets that as its dimmer
+    const dimmers = dimmersOf(found);
+    let added = 0;
+    for (const r of this._config.rooms) for (const e of r.entities || []) if (!e.dimmer && dimmers.has(e.entity)) { e.dimmer = dimmers.get(e.entity); added++; }
+    if (added) this._msg = { rooms: ["", `Linked ${added} switch${added === 1 ? "" : "es"} to the bulb${added === 1 ? "" : "s"} behind ${added === 1 ? "it" : "them"} (floor3d color_entity) for brightness.`] };
+    if (changed || added) return this._emit();
     this._render();
   }
 
@@ -436,6 +442,8 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       const floor3d = this._config.models.map((m) => this._floor3d[m.url] || { entities: [], groups: {} });
       const name = (id) => this._hass?.states?.[id]?.attributes?.friendly_name || String(id).split(".")[1]?.replace(/_/g, " ") || id;
       const proposed = session.suggestRooms(floor3d, name, { sensors: !!this._detectSensors });
+      const dim = dimmersOf(Object.values(this._floor3d));
+      for (const r of proposed) for (const e of r.entities) if (dim.has(e.entity)) e.dimmer = dim.get(e.entity);
       if (!proposed.length) { this._msg = { rooms: ["warn", "No room_N_1 floor objects found. Add rooms by hand and pick their floor objects."] }; return; }
       const existing = new Map(this._config.rooms.map((r) => [JSON.stringify(r.floors), r]));
       const taken = new Set();
@@ -485,6 +493,12 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     const json = await resp.json();
     return { id: json.id, url: `/api/image/serve/${json.id}/original` };
   }
+}
+/** switch → light: floor3d `color_entity` on a non-light entry names the dimmable bulb behind it. */
+function dimmersOf(found) {
+  const map = new Map();
+  for (const f of found || []) for (const e of f.entities || []) if (e.color_entity && !/^light\./.test(e.entity) && /^light\./.test(e.color_entity) && !map.has(e.entity)) map.set(e.entity, e.color_entity);
+  return map;
 }
 /** Objects a floor3d card uses as text or picture panels (type3d text / image), groups resolved. */
 function panelsOf(f) {

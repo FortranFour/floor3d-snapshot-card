@@ -79,7 +79,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     this._config = { guest_mode: true, ...config, rooms };
     if (!ids.includes(this._room)) this._room = ids.includes(config.default_room) ? config.default_room : ids[0];
     this._mapEl = null; this._index = null; this._tintKey = ""; this._light = null; this._direct = null; this._shadeKey = ""; this._directKey = ""; this._sunKey = "";
-    this._entities = new Set(rooms.flatMap((r) => (r.entities || []).map((e) => e.entity)));
+    this._entities = new Set(rooms.flatMap((r) => (r.entities || []).flatMap((e) => [e.entity, ...(e.dimmer ? [e.dimmer] : [])])));
     this._request();
   }
   set hass(hass) {
@@ -184,15 +184,18 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const name = esc(this._name(e)), ic = icon(this._icon(e));
     const busy = this._busy.has(id);
     const dis = !available(s) || busy ? "disabled" : "";
-    const stateText = !s ? "Not found" : !available(s) ? "Unavailable" : busy ? "Changing…" : this._stateText(s);
+    // a dimmer is the light behind a switch: the switch powers it, the light sets the brightness
+    const dimId = e.dimmer || (d === "light" ? id : null), ds = dimId ? this._s(dimId) : null, da = ds?.attributes || {};
+    const dimmable = !!ds && isOn(ds) && (num(da.brightness) || (da.supported_color_modes || []).some((m) => m !== "onoff"));
+    const pct = dimmable ? (num(da.brightness) ? Math.max(1, Math.round(da.brightness / 2.55)) : 100) : null;
+    const stateText = !s ? "Not found" : !available(s) ? "Unavailable" : busy || this._busy.has(dimId) ? "Changing…" : e.dimmer && isOn(s) && pct ? `On · ${pct}%` : this._stateText(s);
     const on = isOn(s);
     const ro = e.read_only || ["sensor", "binary_sensor", "weather", "alarm_control_panel", "person", "device_tracker"].includes(d) || (g && d === "alarm_control_panel");
     const head = (action, sw = true) => `<button class="row" ${action ? `data-action="${action}" data-entity="${esc(id)}" data-focus="t-${esc(id)}"` : "tabindex=-1"} ${action ? dis : ""}><span class="ticon">${ic}</span><span class="ttext"><span class="tname">${name}</span><span class="tstate">${esc(this._confirm?.entity === id ? this._confirm.text : stateText)}</span></span>${sw && action ? '<span class="sw" aria-hidden="true"></span>' : ""}</button>`;
     if (ro || !s) return `<div class="tile">${head(null, false)}</div>`;
     let extra = "";
-    if (d === "light" && on && (num(a.brightness) || (a.supported_color_modes || []).some((m) => m !== "onoff"))) {
-      const pct = num(a.brightness) ? Math.max(1, Math.round(a.brightness / 2.55)) : 100;
-      extra = `<div class="extra"><input class="range" type="range" min="1" max="100" value="${pct}" data-action="brightness" data-entity="${esc(id)}" data-focus="b-${esc(id)}" aria-label="${name} brightness"></div>`;
+    if (on && dimmable) {
+      extra = `<div class="extra"><input class="range" type="range" min="1" max="100" value="${pct}" data-action="brightness" data-entity="${esc(dimId)}" data-focus="b-${esc(id)}" aria-label="${name} brightness"></div>`;
     }
     if (d === "fan" && (Number(a.supported_features) & 1)) {
       const p = on ? Number(a.percentage ?? 100) : 0;

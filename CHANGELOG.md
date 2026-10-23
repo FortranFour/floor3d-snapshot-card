@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 — 2026-10-23
+
+- **Dimmers for switched bulbs.** A room entity can name a `dimmer`, the light behind a wall switch. The tile switches the switch, and while it's on, it shows the bulb's brightness (`On · 80%`) and a slider that sets it. The editor has a *Dimmer* field under each switch. Detecting rooms and *Find floor3d cards* fill it from the floor3d card's `color_entity`, and existing rooms pick it up too.
+
 ## 0.6.0 — 2026-10-22
 
 - **three.js 0.186** (from 0.170), the version floor3dx-card 2.x renders with. The models' object names are made unique the way three.js r130 did (`1_1`, `1_1_1`, `1_1_1_1` for duplicates), so the `panels`, rooms and anchors copied from a floor3d or floor3dx configuration keep matching; current loaders number duplicates differently and the names a configuration refers to could be missing from the model.

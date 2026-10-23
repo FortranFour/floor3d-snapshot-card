@@ -56,6 +56,10 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 
 Each theme recolours surfaces per pixel, so textures still show as pattern. Walls (`wall…` objects) and floors (`room…`, `floor…`) get their own tints. Bright, saturated colours keep their colour. The card shows the picture on the theme's stage colour; with sunlight on, the stage runs from its night colour to its day colour. If the floor3dx card you pick in *Find floor3d cards* has a `look.theme` or a `north`, the editor copies them in.
 
+## A switch and the bulb behind it
+
+A wall switch that powers a smart bulb has its on/off on one entity (`switch.…`) and its brightness on another (`light.…`). Give the room entry a `dimmer`: the tile still switches the switch, and while it's on, it shows the bulb's brightness and a slider that sets it. The editor shows a *Dimmer* field under every switch, and fills it automatically from the floor3d card's `color_entity` (floor3dx-card's link from a switch to the bulb behind it) when you detect rooms or run *Find floor3d cards*.
+
 ## Text and picture panels
 
 A floor3d card often shows sensor values and pictures on flat panels in the model (`type3d: text` and `type3d: image`). In a static snapshot those are blank frames, so the card hides them: *Find floor3d cards* records, per model, the objects the card binds as text or pictures, and the render hides each one (resolved as floor3d does, by the first object of that name) together with unused spares beside it, i.e. flat objects of the same size and name family, such as the empty slots in a stack of label frames. Untick *Hide the floor3d card's text and picture panels* in the Snapshot section to keep them. *Hide objects matching* (Advanced) still hides anything else by name, in every model.
@@ -128,6 +132,8 @@ rooms:
     entities:
       - entity: light.kitchen_island
         name: Island           # optional label
+      - entity: switch.kitchen_sink          # a wall switch…
+        dimmer: light.kitchen_sink_bulb      # …and the bulb behind it, for brightness
       - entity: sensor.kitchen_temperature
         read_only: true        # show state only
   - id: porch
@@ -163,6 +169,7 @@ snapshot:                  # written by the editor's Render button
 | Domain | Control |
 |---|---|
 | `light` | toggle, brightness slider when on |
+| `switch` with a `dimmer` | toggle; while on, a brightness slider for the light behind it |
 | `switch`, `input_boolean`, `remote`, `humidifier` | toggle |
 | `fan` | toggle; Off/Low/Med/High when speeds are supported |
 | `media_player` | power toggle; volume slider (capped in guest mode) |
