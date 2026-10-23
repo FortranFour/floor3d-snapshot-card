@@ -147,6 +147,11 @@ rooms:
         read_only: true        # show state only
       - entity: switch.arcade_machine
         guest_hidden: true     # not shown while guest mode is on
+      - entity: media_player.family_room_tv
+        remote: remote.family_room_tv        # optional: Ch −/+ and Info keys
+        sources: [TV, HDMI 1]                # optional: limit the source list
+      - entity: cover.shade1_bottom          # a top-down/bottom-up shade: bottom rail…
+        top_entity: cover.shade1_top         # …and top rail; only one end opens at a time
   - id: porch
     name: Porch
     anchor: { model: 0, object: porch_light }   # pin-only room
@@ -173,7 +178,8 @@ color_swatches: false      # default: off in guest mode, on otherwise
 guest_mode: true
 guest_mode_entity: input_boolean.guest_mode   # guest mode follows this switch (falls back to guest_mode)
 max_volume: 0.6
-temperature_range: [64, 78]
+temperature_range: [64, 78]  # thermostat setpoints guests may choose
+guest_thermostat: setpoint_power   # setpoint_power (default) | setpoint | full | view
 snapshot:                  # written by the editor's Render button
   image: /api/image/serve/<id>/original
   index: /api/image/serve/<id>/original
@@ -190,12 +196,32 @@ snapshot:                  # written by the editor's Render button
 | `switch` with a `dimmer` | toggle; while on, the same light controls for the bulb behind it |
 | `switch`, `input_boolean`, `remote`, `humidifier` | toggle |
 | `fan` | toggle; Off/Low/Med/High when speeds are supported |
-| `media_player` | power toggle; volume slider (capped in guest mode) |
-| `cover` | Open / Stop / Close — *Close* only for garage, gate and door covers in guest mode |
-| `climate` | current mode and temperature, − / + setpoint (within `temperature_range`) |
+| `media_player` | power toggle; what's playing; volume slider or − / + (capped in guest mode) and mute; channel − / + (or previous/next); source list |
+| `cover` | Open / Stop / Close and a position slider — *Close* only for garage, gate and door covers in guest mode |
+| `cover` with a `top_entity` | a top-down/bottom-up shade: *Top* / *Close* / *Bottom* and a slider for the open end; only one end opens at a time |
+| `climate` | on/off; − / + setpoint, or *Heat to* and *Cool to* in Heat/Cool mode; mode buttons (not for guests) |
 | `lock` | Lock (tap twice to confirm); Unlock only with guest mode off |
 | `scene`, `script`, `button`, `input_button` | Run (tap twice) |
 | `sensor`, `binary_sensor`, `alarm_control_panel`, others | state only |
+
+### Thermostats
+
+The tile's switch turns the thermostat on and off (it resumes its last mode). In Heat/Cool (or Auto with two setpoints, as on an ecobee), the tile shows *Heat to* and *Cool to*, kept at least 2 °F (1 °C) apart; otherwise a single setpoint. With guest mode off, mode buttons (Heat/Cool, Heat, Cool, Dry, Fan…) appear, and setpoints go as far as the thermostat allows. In guest mode, what guests may do is set by `guest_thermostat` (*Display → Thermostats in guest mode*):
+
+| `guest_thermostat` | Guests can… |
+|---|---|
+| `setpoint_power` (default) | change the temperature within `temperature_range` and turn it on or off |
+| `setpoint` | change the temperature within `temperature_range` only |
+| `full` | also change the mode |
+| `view` | only look |
+
+### TVs
+
+A TV that's on shows what's playing (title, app or source), volume (a slider, or − / + for TVs that only step; both stop at `max_volume`, 0.6 by default in guest mode), mute, channel − / + and a source list. Channel buttons use the TV's remote entity when you name it in the room editor (*TV remote*): Samsung (`samsungtv`) and Android TV (`androidtv_remote`) remotes are known; for others, give the keys with `remote_commands: { channel_up: …, channel_down: …, info: … }`. A Samsung TV changes channel with its media player's next/previous too. Without a remote, players that skip tracks get previous, play/pause and next. *Info* shows the TV's own info banner. If a TV can't be turned on through its media player but its remote can, the power switch uses the remote.
+
+### Top-down/bottom-up shades
+
+Hunter Douglas PowerView and similar shades appear as two covers, one per rail. Add the bottom rail to the room and set *Top rail* (`top_entity`) to the other: they become one tile with *Top*, *Close* and *Bottom* and a slider for the open end. Opening one end first closes the other and waits until it reports closed, so both ends are never open at once. If both are found open (set elsewhere), the tile says so in red, and *Close* closes both.
 
 ## How it works
 

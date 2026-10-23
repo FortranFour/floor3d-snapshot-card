@@ -19,6 +19,14 @@ const icon = (name) => `<ha-icon icon="${esc(name)}" aria-hidden="true"></ha-ico
 const ACTIVE_DOMAINS = new Set(["light", "switch", "fan", "input_boolean", "media_player"]);
 const DEFAULT_ICONS = { light: "mdi:lightbulb-outline", switch: "mdi:toggle-switch-outline", fan: "mdi:fan", cover: "mdi:window-shutter", climate: "mdi:thermostat", media_player: "mdi:television", lock: "mdi:lock-outline", scene: "mdi:palette-outline", script: "mdi:script-text-outline", sensor: "mdi:eye-outline", binary_sensor: "mdi:checkbox-blank-circle-outline", input_boolean: "mdi:toggle-switch-outline", button: "mdi:gesture-tap-button", input_button: "mdi:gesture-tap-button", alarm_control_panel: "mdi:shield-home-outline", vacuum: "mdi:robot-vacuum" };
 const SENSITIVE_COVERS = new Set(["garage", "gate", "door"]);
+// thermostat modes: [label, icon]; "off" is the tile's power switch
+const HVAC = { heat_cool: ["Heat/Cool", "mdi:sun-snowflake-variant"], auto: ["Auto", "mdi:thermostat-auto"], heat: ["Heat", "mdi:fire"], cool: ["Cool", "mdi:snowflake"], dry: ["Dry", "mdi:water-percent"], fan_only: ["Fan", "mdi:fan"], off: ["Off", "mdi:power"] };
+const GUEST_THERMOSTAT = ["full", "setpoint_power", "setpoint", "view"];
+// remote keys for channel and info, by the remote entity's integration (overridable per tile)
+const REMOTE_KEYS = { samsungtv: { channel_up: "KEY_CHUP", channel_down: "KEY_CHDOWN", info: "KEY_INFO" }, androidtv_remote: { channel_up: "CHANNEL_UP", channel_down: "CHANNEL_DOWN", info: "INFO" } };
+// media_player feature bits
+const MP = { PAUSE: 1, VOLUME_SET: 4, VOLUME_MUTE: 8, PREVIOUS: 16, NEXT: 32, TURN_ON: 128, VOLUME_STEP: 1024, SELECT_SOURCE: 2048, PLAY: 16384 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // weather states → [label, icon]
 const WEATHER = { "clear-night": ["Clear", "mdi:weather-night"], cloudy: ["Cloudy", "mdi:weather-cloudy"], exceptional: ["Unusual", "mdi:alert-circle-outline"], fog: ["Fog", "mdi:weather-fog"], hail: ["Hail", "mdi:weather-hail"], lightning: ["Lightning", "mdi:weather-lightning"], "lightning-rainy": ["Storms", "mdi:weather-lightning-rainy"], partlycloudy: ["Partly cloudy", "mdi:weather-partly-cloudy"], pouring: ["Heavy rain", "mdi:weather-pouring"], rainy: ["Rain", "mdi:weather-rainy"], snowy: ["Snow", "mdi:weather-snowy"], "snowy-rainy": ["Sleet", "mdi:weather-snowy-rainy"], sunny: ["Sunny", "mdi:weather-sunny"], windy: ["Windy", "mdi:weather-windy"], "windy-variant": ["Windy", "mdi:weather-windy-variant"] };
 const COLOR_MODES = ["hs", "xy", "rgb", "rgbw", "rgbww"];
@@ -32,7 +40,7 @@ const mixHex = (a, b, t) => { const p = (h) => [1, 3, 5].map((i) => parseInt(h.s
 
 const STYLE = `
 :host{display:block;--f3s-blue:rgb(var(--rgb-primary-color,3,169,244));--f3s-ink:var(--primary-text-color,#233246);--f3s-muted:var(--secondary-text-color,#677587);--f3s-surface:var(--ha-card-background,var(--card-background-color,#fff));--f3s-line:rgba(var(--rgb-primary-text-color,33,33,33),.1);--f3s-amber:#dfac2a}
-*{box-sizing:border-box}button,input{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}button:disabled{cursor:default;opacity:.45}button:focus-visible,input:focus-visible{outline:3px solid var(--f3s-blue);outline-offset:3px}ha-icon{width:22px;height:22px;flex:none;color:inherit}
+*{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}button:disabled{cursor:default;opacity:.45}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--f3s-blue);outline-offset:3px}ha-icon{width:22px;height:22px;flex:none;color:inherit}
 ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
 .head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px 16px;margin:0 2px 10px}.head .titles{flex:1 1 220px;min-width:0}.status{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 1 auto;min-width:0}.when{color:var(--f3s-muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.schips{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.schip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 11px 4px 9px;border:1px solid var(--f3s-line);border-radius:16px;background:var(--f3s-surface);color:var(--f3s-ink);font-size:13px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.04)}.schip ha-icon{width:18px;height:18px;color:var(--f3s-blue)}.schip[aria-disabled=true]{cursor:default}.schip.guest{color:var(--f3s-muted)}.schip.guest[aria-pressed=true]{color:var(--f3s-ink);border-color:rgba(var(--rgb-primary-color,3,169,244),.45);background:rgba(var(--rgb-primary-color,3,169,244),.07)}
 :host(.narrow) .status{flex:1 1 100%;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}:host(.narrow) .schips{justify-content:flex-start}:host(.narrow) .when{flex:1 1 100%}.head h2{margin:0;font-size:20px;font-weight:500;letter-spacing:-.3px}.head p{margin:2px 0 0;color:var(--f3s-muted);font-size:13px}
@@ -46,7 +54,7 @@ ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 8px;max-width:100%;scrollbar-width:thin}.chip{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:38px;padding:4px 12px;border:1px solid var(--f3s-line);border-radius:12px;background:transparent;color:var(--f3s-ink);font-size:13px}.chip[aria-pressed=true]{border-color:rgba(var(--rgb-primary-color,3,169,244),.6);background:rgba(var(--rgb-primary-color,3,169,244),.08);color:var(--f3s-blue)}.chip ha-icon{width:18px;height:18px}
 .panel{border:1px solid var(--f3s-line);border-radius:16px;padding:16px;min-width:0}.roomhead{display:flex;gap:12px;align-items:center;margin-bottom:14px}.roomicon{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:rgba(var(--rgb-primary-color,3,169,244),.075);color:var(--f3s-blue)}.roomhead h3{margin:0 0 3px;font-size:20px;font-weight:500}.roomhead p{margin:0;color:var(--f3s-muted);font-size:13px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:9px}.tile{border:1px solid var(--f3s-line);border-radius:14px;overflow:hidden;min-width:0}.tile.on{background:rgba(var(--rgb-primary-color,3,169,244),.06)}.row{display:flex;align-items:center;gap:10px;width:100%;min-height:68px;padding:12px;border:0;background:transparent;color:inherit;text-align:left}.ticon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:11px;background:rgba(var(--rgb-primary-text-color,33,33,33),.05);color:var(--f3s-muted)}.tile.on .ticon{color:#d7a329;background:rgba(255,193,7,.13)}.ttext{flex:1;min-width:0}.tname{display:block;font-size:14px;font-weight:500;line-height:1.3;overflow-wrap:anywhere}.tstate{display:block;color:var(--f3s-muted);font-size:12px;margin-top:3px}.sw{flex:none;width:28px;height:17px;border-radius:10px;background:rgba(var(--rgb-primary-text-color,33,33,33),.14);padding:3px}.sw:before{content:"";display:block;width:11px;height:11px;border-radius:50%;background:var(--f3s-surface)}.tile.on .sw{background:var(--f3s-blue)}.tile.on .sw:before{margin-left:11px}
-.extra{padding:0 12px 12px}.ctl{margin-top:2px}.ctl-l{display:block;font-size:11px;color:var(--f3s-muted);margin:2px 0 -2px}.range.warmth{accent-color:#e9a65a}.wheel{position:relative;width:136px;height:136px;margin:4px auto 0}.swatch-b{position:absolute;width:32px;height:32px;margin:-16px 0 0 -16px;border-radius:50%;border:1px solid rgba(0,0,0,.14);background:var(--sw);padding:0}.swatch-b[aria-pressed=true]{box-shadow:0 0 0 2px var(--f3s-surface),0 0 0 4px var(--f3s-blue)}.range{display:block;width:100%;height:30px;margin:0;accent-color:var(--f3s-blue);touch-action:pan-x}.seg{display:flex;gap:5px}.seg button{flex:1;min-height:38px;border:1px solid var(--f3s-line);border-radius:10px;background:transparent;color:var(--f3s-muted);font-size:12px}.seg button[aria-pressed=true]{color:var(--f3s-blue);border-color:rgba(var(--rgb-primary-color,3,169,244),.5);background:rgba(var(--rgb-primary-color,3,169,244),.07)}.temp{display:flex;align-items:center;gap:10px;justify-content:space-between}.temp .val{font-size:20px}.step{width:42px;height:40px;border:1px solid var(--f3s-line);border-radius:11px;background:rgba(var(--rgb-primary-color,3,169,244),.05);color:var(--f3s-blue);font-size:22px}
+.extra{padding:0 12px 12px}.ctl{margin-top:2px}.ctl-l{display:block;font-size:11px;color:var(--f3s-muted);margin:2px 0 -2px}.range.warmth{accent-color:#e9a65a}.wheel{position:relative;width:136px;height:136px;margin:4px auto 0}.swatch-b{position:absolute;width:32px;height:32px;margin:-16px 0 0 -16px;border-radius:50%;border:1px solid rgba(0,0,0,.14);background:var(--sw);padding:0}.swatch-b[aria-pressed=true]{box-shadow:0 0 0 2px var(--f3s-surface),0 0 0 4px var(--f3s-blue)}.range{display:block;width:100%;height:30px;margin:0;accent-color:var(--f3s-blue);touch-action:pan-x}.seg{display:flex;gap:5px}.seg button{flex:1;min-height:38px;border:1px solid var(--f3s-line);border-radius:10px;background:transparent;color:var(--f3s-muted);font-size:12px}.seg button[aria-pressed=true]{color:var(--f3s-blue);border-color:rgba(var(--rgb-primary-color,3,169,244),.5);background:rgba(var(--rgb-primary-color,3,169,244),.07)}.seg.wrap{flex-wrap:wrap}.seg button{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:0 4px;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.ctl .temp{margin-top:5px}.seg button ha-icon{width:19px;height:19px}.seg+.ctl,.ctl+.seg,.seg+.range,.minfo+.vol,.vol+.seg,.seg+.msel,.vol+.msel,.ctl+.ctl{margin-top:8px}.vol{display:flex;align-items:center;gap:8px}.vol .range{flex:1;min-width:0}.vol .seg{flex:1}.mbtn{flex:none;display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--f3s-line);border-radius:10px;background:transparent;color:var(--f3s-muted)}.mbtn ha-icon{width:19px;height:19px}.mbtn[aria-pressed=true]{color:var(--f3s-blue);border-color:rgba(var(--rgb-primary-color,3,169,244),.5);background:rgba(var(--rgb-primary-color,3,169,244),.07)}.msel{display:block;width:100%;min-height:38px;padding:0 10px;border:1px solid var(--f3s-line);border-radius:10px;background:transparent;color:var(--f3s-ink);font:inherit;font-size:13px}.msel option{color:#233246;background:#fff}.minfo{margin:-4px 0 8px;color:var(--f3s-muted);font-size:12px;line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.tstate.warn{color:#c0392b}.temp{display:flex;align-items:center;gap:10px;justify-content:space-between}.temp .val{font-size:20px}.step{width:42px;height:40px;border:1px solid var(--f3s-line);border-radius:11px;background:rgba(var(--rgb-primary-color,3,169,244),.05);color:var(--f3s-blue);font-size:22px}
 .foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}.quiet{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:6px 12px;border:1px solid var(--f3s-line);border-radius:11px;background:transparent;color:var(--f3s-muted);font-size:12px}.quiet ha-icon{width:17px;height:17px}.hint{color:var(--f3s-muted);font-size:11px}
 .empty{padding:20px;text-align:center;color:var(--f3s-muted);font-size:14px;line-height:1.6;border:1px dashed var(--f3s-line);border-radius:14px}.toast{position:fixed;z-index:10;bottom:24px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);border:1px solid var(--f3s-line);border-radius:14px;background:var(--f3s-surface);padding:12px 16px;box-shadow:0 4px 18px rgba(0,0,0,.12);font-size:13px}
 @media(max-width:600px){.pin{height:26px;min-width:26px;padding:0 4px;transform:translate(-13px,-50%);font-size:11px}.pin ha-icon{width:16px;height:16px}.pin:before{inset:-9px}}
@@ -72,6 +80,8 @@ export class Floor3dSnapshotCard extends HTMLElement {
     this.shadowRoot.appendChild(this._card);
     try { this._labels = localStorage.getItem("floor3d-snapshot-labels") === "1"; } catch { this._labels = false; }
     this._busy = new Set();
+    this._seq = new Set();          // entities held by a multi-step action (a shade changing ends)
+    this._lastHvac = new Map();     // last mode each thermostat ran in, for power-on without turn_on
     this._confirm = null;
     this.shadowRoot.addEventListener("click", (e) => this._click(e));
     this.shadowRoot.addEventListener("change", (e) => this._change(e));
@@ -79,6 +89,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     this.shadowRoot.addEventListener("pointerdown", (e) => { if (e.target.matches?.("input[type=range]")) this._dragging = true; this._pointer = true; clearTimeout(this._pt); this._pt = setTimeout(() => this._release(), 1500); });
     this.shadowRoot.addEventListener("pointerup", () => this._release());
     this.shadowRoot.addEventListener("pointercancel", () => this._release());
+    this.shadowRoot.addEventListener("focusout", (e) => { if (e.target.localName === "select" && this._held && !this._pointer && !this._dragging) { this._held = false; setTimeout(() => this._request(), 60); } });
     this._ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => this._layout()) : null;
   }
 
@@ -148,7 +159,8 @@ export class Floor3dSnapshotCard extends HTMLElement {
     requestAnimationFrame(() => {
       this._queued = false;
       if (!this.isConnected || !this._config) return;
-      if (this._pointer || this._dragging) { this._held = true; return; }
+      // an open source list would close if redrawn under it
+      if (this._pointer || this._dragging || this.shadowRoot.activeElement?.localName === "select") { this._held = true; return; }
       this._render();
     });
   }
@@ -173,7 +185,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
   _allowAll() {
     const rooms = this._config?.rooms || [];
     this._guestNow = this._guest();
-    this._entities = new Set(rooms.flatMap((r) => this._ents(r).flatMap((e) => [e.entity, ...(e.dimmer ? [e.dimmer] : [])])));
+    this._entities = new Set(rooms.flatMap((r) => this._ents(r).flatMap((e) => [e.entity, ...[e.dimmer, e.top_entity, e.remote].filter(Boolean)])));
   }
   /** A room's entities as shown: in guest mode, without those marked guest_hidden. */
   _ents(room) { const g = this._guest(); return (room?.entities || []).filter((e) => !(g && e.guest_hidden)); }
@@ -274,7 +286,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
   _tile(e) {
     const id = e.entity, s = this._s(id), d = domainOf(id), a = s?.attributes || {}, g = this._guest();
     const name = esc(this._name(e)), ic = icon(this._icon(e));
-    const busy = this._busy.has(id);
+    const busy = this._busy.has(id) || this._seq.has(id) || (!!e.top_entity && (this._busy.has(e.top_entity) || this._seq.has(e.top_entity)));
     const dis = !available(s) || busy ? "disabled" : "";
     // a dimmer is the light behind a switch: the switch powers it, the light sets the brightness
     const dimId = e.dimmer || (d === "light" ? id : null), ds = dimId ? this._s(dimId) : null, da = ds?.attributes || {};
@@ -284,10 +296,11 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const dimmable = dimReady && (num(da.brightness) || (da.supported_color_modes || []).some((m) => m !== "onoff"));
     const pct = dimmable ? (num(da.brightness) && isOn(ds) ? Math.max(1, Math.round(da.brightness / 2.55)) : 100) : null;
     const dimNote = e.dimmer && isOn(s) ? (!ds ? " · bulb not found" : !available(ds) ? " · bulb unavailable" : !isOn(ds) ? " · bulb off" : pct ? ` · ${pct}%` : "") : "";
-    const stateText = !s ? "Not found" : !available(s) ? "Unavailable" : busy || this._busy.has(dimId) ? "Changing…" : e.dimmer && isOn(s) ? `On${dimNote}` : this._stateText(s);
+    const stateText = !s ? "Not found" : !available(s) ? "Unavailable" : busy || this._busy.has(dimId) ? "Changing…" : e.dimmer && isOn(s) ? `On${dimNote}` : this._stateText(s, e);
     const on = isOn(s);
     const ro = e.read_only || ["sensor", "binary_sensor", "weather", "alarm_control_panel", "person", "device_tracker"].includes(d) || (g && d === "alarm_control_panel");
-    const head = (action, sw = true) => `<button class="row" ${action ? `data-action="${action}" data-entity="${esc(id)}" data-focus="t-${esc(id)}"` : "tabindex=-1"} ${action ? dis : ""}><span class="ticon">${ic}</span><span class="ttext"><span class="tname">${name}</span><span class="tstate">${esc(this._confirm?.entity === id ? this._confirm.text : stateText)}</span></span>${sw && action ? '<span class="sw" aria-hidden="true"></span>' : ""}</button>`;
+    const warn = d === "cover" && e.top_entity && this._railPos(id) > 0 && this._railPos(e.top_entity) > 0;
+    const head = (action, sw = true) => `<button class="row" ${action ? `data-action="${action}" data-entity="${esc(id)}" data-focus="t-${esc(id)}"` : "tabindex=-1"} ${action ? dis : ""}><span class="ticon">${ic}</span><span class="ttext"><span class="tname">${name}</span><span class="tstate${warn ? " warn" : ""}">${esc(this._confirm?.entity === id ? this._confirm.text : stateText)}</span></span>${sw && action ? '<span class="sw" aria-hidden="true"></span>' : ""}</button>`;
     if (ro || !s) return `<div class="tile">${head(null, false)}</div>`;
     let extra = "";
     if (on && dimReady) {
@@ -319,22 +332,9 @@ export class Floor3dSnapshotCard extends HTMLElement {
       const sel = opts.reduce((b, o) => Math.abs(o[1] - p) < Math.abs(b[1] - p) ? o : b)[1];
       extra = `<div class="extra"><div class="seg">${opts.map(([n, v]) => `<button data-action="fan" data-entity="${esc(id)}" data-value="${v}" data-focus="f-${esc(id)}-${v}" aria-pressed="${v === sel}" ${dis}>${n}</button>`).join("")}</div></div>`;
     }
-    if (d === "media_player" && on && (Number(a.supported_features) & 4) && num(a.volume_level)) {
-      const cap = Math.min(1, Number(this._config.max_volume ?? (g ? 0.6 : 1)));
-      extra = `<div class="extra"><input class="range" type="range" min="0" max="${cap}" step="0.02" value="${Math.min(cap, a.volume_level)}" data-action="volume" data-entity="${esc(id)}" data-focus="v-${esc(id)}" aria-label="${name} volume"></div>`;
-    }
-    if (d === "cover") {
-      const sensitive = g && SENSITIVE_COVERS.has(a.device_class);
-      const btn = (svc, label) => `<button data-action="cover" data-service="${svc}" data-entity="${esc(id)}" data-focus="c-${esc(id)}-${svc}" ${dis}>${label}</button>`;
-      return `<div class="tile ${on ? "on" : ""}">${head(null, false)}<div class="extra"><div class="seg">${sensitive ? btn("close_cover", "Close") : btn("open_cover", "Open") + btn("stop_cover", "Stop") + btn("close_cover", "Close")}</div></div></div>`;
-    }
-    if (d === "climate") {
-      const range = this._config.temperature_range;
-      const step = Number(a.target_temp_step) || (String(this._hass?.config?.unit_system?.temperature).includes("C") ? 0.5 : 1);
-      const t = a.temperature;
-      const ctl = num(t) ? `<div class="temp"><button class="step" data-action="temp" data-entity="${esc(id)}" data-value="${-step}" data-focus="tm-${esc(id)}" ${dis || (range && t - step < range[0] ? "disabled" : "")} aria-label="Lower">−</button><span class="val">${t}°</span><button class="step" data-action="temp" data-entity="${esc(id)}" data-value="${step}" data-focus="tp-${esc(id)}" ${dis || (range && t + step > range[1] ? "disabled" : "")} aria-label="Raise">+</button></div>` : "";
-      return `<div class="tile ${on ? "on" : ""}">${head(null, false)}${ctl ? `<div class="extra">${ctl}</div>` : ""}</div>`;
-    }
+    if (d === "media_player") return this._mediaTile(e, { s, a, on, name, head, dis, g });
+    if (d === "cover") return this._coverTile(e, { s, a, on, name, head, dis, g });
+    if (d === "climate") return this._climateTile(e, { s, a, on, name, head, dis, g });
     if (d === "lock") {
       const locked = s.state === "locked";
       if (g && locked) return `<div class="tile">${head(null, false)}</div>`;
@@ -344,11 +344,157 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (["light", "switch", "input_boolean", "fan", "media_player", "remote", "humidifier"].includes(d)) return `<div class="tile ${on ? "on" : ""}">${head("toggle")}${extra}</div>`;
     return `<div class="tile">${head(null, false)}</div>`;
   }
-  _stateText(s) {
+  // ---- thermostats ------------------------------------------------------------
+  /** What a guest may do with a thermostat: full, setpoint_power (default), setpoint or view. */
+  _thermoLevel() { if (!this._guest()) return "full"; const v = this._config.guest_thermostat; return GUEST_THERMOSTAT.includes(v) ? v : "setpoint_power"; }
+  _tempStep(a) { return Number(a.target_temp_step) || (String(this._hass?.config?.unit_system?.temperature).includes("C") ? 0.5 : 1); }
+  /** Setpoint limits: the device's own, narrowed to temperature_range while guest mode is on. */
+  _tempLimits(a) {
+    let lo = num(a.min_temp) ? Number(a.min_temp) : -Infinity, hi = num(a.max_temp) ? Number(a.max_temp) : Infinity;
+    const r = this._config.temperature_range;
+    if (this._guest() && Array.isArray(r) && num(r[0]) && num(r[1])) { lo = Math.max(lo, Number(r[0])); hi = Math.min(hi, Number(r[1])); }
+    return [lo, hi];
+  }
+  _dual(a) { return num(a.target_temp_low) && num(a.target_temp_high) && !num(a.temperature); }
+  _climateTile(e, { s, a, on, head, dis }) {
+    const id = e.entity, level = this._thermoLevel();
+    if (on) this._lastHvac.set(id, s.state);
+    const power = level === "full" || level === "setpoint_power";
+    const step = this._tempStep(a), [lo, hi] = this._tempLimits(a), gap = this._gap(a);
+    const fmt = (t) => `${Math.round(Number(t) * 10) / 10}°`;
+    const stepper = (which, t, minus, plus, label) => `<div class="temp"><button class="step" data-action="temp" data-which="${which}" data-entity="${esc(id)}" data-value="${-step}" data-focus="tm${which}-${esc(id)}" ${dis || (minus ? "" : "disabled")} aria-label="Lower ${label}">−</button><span class="val">${fmt(t)}</span><button class="step" data-action="temp" data-which="${which}" data-entity="${esc(id)}" data-value="${step}" data-focus="tp${which}-${esc(id)}" ${dis || (plus ? "" : "disabled")} aria-label="Raise ${label}">+</button></div>`;
+    const parts = [];
+    if (on && level !== "view") {
+      if (this._dual(a)) {
+        const L = Number(a.target_temp_low), H = Number(a.target_temp_high);
+        parts.push(["Heat to", stepper("low", L, L - step >= lo, L + step <= hi - gap, "heat setpoint")]);
+        parts.push(["Cool to", stepper("high", H, H - step >= lo + gap, H + step <= hi, "cool setpoint")]);
+      } else if (num(a.temperature)) {
+        const t = Number(a.temperature);
+        parts.push(["", stepper("", t, t - step >= lo, t + step <= hi, "setpoint")]);
+      }
+    }
+    const modes = (a.hvac_modes || []).filter((m) => m !== "off" && HVAC[m]);
+    let html = parts.map(([label, h]) => label ? `<div class="ctl"><span class="ctl-l">${label}</span>${h}</div>` : `<div class="ctl">${h}</div>`).join("");
+    if (level === "full" && modes.length > 1) {
+      html += `<div class="seg${modes.length > 5 ? " wrap" : ""}" role="group" aria-label="Mode">${modes.map((m) => `<button data-action="hvac" data-mode="${m}" data-entity="${esc(id)}" data-focus="h-${esc(id)}-${m}" aria-pressed="${s.state === m}" aria-label="${HVAC[m][0]}" title="${HVAC[m][0]}" ${dis}>${icon(HVAC[m][1])}</button>`).join("")}</div>`;
+    }
+    return `<div class="tile ${on ? "on" : ""}">${head(power ? "climate-power" : null, power)}${html ? `<div class="extra">${html}</div>` : ""}</div>`;
+  }
+  /** Smallest gap kept between heat and cool setpoints (never wider than the current one). */
+  _gap(a) {
+    const want = String(this._hass?.config?.unit_system?.temperature).includes("C") ? 1 : 2;
+    return this._dual(a) ? Math.max(0, Math.min(want, Number(a.target_temp_high) - Number(a.target_temp_low))) : 0;
+  }
+  _resumeMode(s) {
+    const modes = s.attributes.hvac_modes || [], last = this._lastHvac.get(s.entity_id);
+    if (last && modes.includes(last)) return last;
+    return ["heat_cool", "auto", "heat", "cool"].find((m) => modes.includes(m)) || modes.find((m) => m !== "off");
+  }
+
+  // ---- TVs and speakers -------------------------------------------------------
+  _volCap() { return Math.min(1, Number(this._config.max_volume ?? (this._guest() ? 0.6 : 1))); }
+  _platform(id) { return this._hass?.entities?.[id]?.platform; }
+  /** Remote keys for channel up/down and info: the tile's remote_commands, else by the remote's integration. */
+  _remoteKeys(e) {
+    if (!e.remote || !available(this._s(e.remote))) return {};
+    return { ...(REMOTE_KEYS[this._platform(e.remote)] || {}), ...(e.remote_commands || {}) };
+  }
+  _mediaTile(e, { s, a, on, name, head, dis }) {
+    const id = e.entity, f = Number(a.supported_features) || 0, rows = [];
+    if (on) {
+      const what = [a.media_title, a.media_series_title || a.media_artist].filter(Boolean).join(" — ");
+      if (what) rows.push(`<div class="minfo" title="${esc(what)}">${esc(what)}</div>`);
+      const cap = this._volCap();
+      const mute = f & MP.VOLUME_MUTE ? `<button class="mbtn" data-action="tv" data-cmd="mute" data-entity="${esc(id)}" data-focus="mu-${esc(id)}" aria-pressed="${!!a.is_volume_muted}" aria-label="Mute" title="Mute" ${dis}>${icon(a.is_volume_muted ? "mdi:volume-off" : "mdi:volume-high")}</button>` : "";
+      if (f & MP.VOLUME_SET && num(a.volume_level)) rows.push(`<div class="vol">${mute}<input class="range" type="range" min="0" max="${cap}" step="0.02" value="${Math.min(cap, a.volume_level)}" data-action="volume" data-entity="${esc(id)}" data-focus="v-${esc(id)}" aria-label="${name} volume"></div>`);
+      else if (f & MP.VOLUME_STEP) {
+        const atCap = num(a.volume_level) && Number(a.volume_level) >= cap - 0.001;
+        rows.push(`<div class="vol">${mute}<div class="seg"><button data-action="tv" data-cmd="vol-down" data-entity="${esc(id)}" data-focus="vd-${esc(id)}" aria-label="Volume down" title="Volume down" ${dis}>${icon("mdi:volume-minus")}</button><button data-action="tv" data-cmd="vol-up" data-entity="${esc(id)}" data-focus="vu-${esc(id)}" aria-label="Volume up" title="Volume up" ${dis || (atCap ? "disabled" : "")}>${icon("mdi:volume-plus")}</button></div></div>`);
+      } else if (mute) rows.push(`<div class="vol">${mute}</div>`);
+      const keys = this._remoteKeys(e), bt = (cmd, label, inner) => `<button data-action="tv" data-cmd="${cmd}" data-entity="${esc(id)}" data-focus="tv-${esc(id)}-${cmd}" aria-label="${label}" title="${label}" ${dis}>${inner}</button>`;
+      const channels = keys.channel_up && keys.channel_down, tracks = f & MP.PREVIOUS && f & MP.NEXT;
+      // Samsung's own media player changes channel with next/previous track
+      const tvTracks = !channels && tracks && this._platform(id) === "samsungtv";
+      const mid = keys.info ? bt("info", "Show info on the TV", "Info") : !channels && !tvTracks && f & (MP.PAUSE | MP.PLAY) ? bt("play-pause", "Play or pause", icon(s.state === "playing" ? "mdi:pause" : "mdi:play")) : "";
+      if (channels || tvTracks) rows.push(`<div class="seg">${bt(channels ? "ch-down" : "prev", "Channel down", "Ch −")}${mid}${bt(channels ? "ch-up" : "next", "Channel up", "Ch +")}</div>`);
+      else if (tracks) rows.push(`<div class="seg">${bt("prev", "Previous", icon("mdi:skip-previous"))}${mid}${bt("next", "Next", icon("mdi:skip-next"))}</div>`);
+      else if (mid) rows.push(`<div class="seg">${mid}</div>`);
+      const list = (Array.isArray(a.source_list) ? a.source_list : []).filter((x) => !Array.isArray(e.sources) || e.sources.includes(x));
+      if (f & MP.SELECT_SOURCE && list.length) {
+        const cur = list.includes(a.source) ? "" : `<option value="" selected disabled>${esc(a.source || "Source")}</option>`;
+        rows.push(`<select class="msel" data-action="source" data-entity="${esc(id)}" data-focus="src-${esc(id)}" aria-label="${name} source" ${dis}>${cur}${list.map((x) => `<option value="${esc(x)}" ${x === a.source ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>`);
+      }
+    }
+    return `<div class="tile ${on ? "on" : ""}">${head("toggle")}${rows.length ? `<div class="extra">${rows.join("")}</div>` : ""}</div>`;
+  }
+
+  // ---- covers and shades ------------------------------------------------------
+  _railPos(id) { const st = this._s(id); return available(st) && num(st.attributes.current_position) ? Number(st.attributes.current_position) : st?.state === "open" ? 100 : 0; }
+  _coverTile(e, { s, a, on, name, head, dis, g }) {
+    const id = e.entity, f = Number(a.supported_features) || 0;
+    if (e.top_entity) return this._shadeTile(e, { on, name, head, dis });
+    const sensitive = g && SENSITIVE_COVERS.has(a.device_class);
+    const btn = (svc, label) => `<button data-action="cover" data-service="${svc}" data-entity="${esc(id)}" data-focus="c-${esc(id)}-${svc}" ${dis}>${label}</button>`;
+    let html = `<div class="seg">${sensitive ? btn("close_cover", "Close") : btn("open_cover", "Open") + btn("stop_cover", "Stop") + btn("close_cover", "Close")}</div>`;
+    if (!sensitive && f & 4 && num(a.current_position)) html += `<input class="range" type="range" min="0" max="100" step="1" value="${Number(a.current_position)}" data-action="position" data-entity="${esc(id)}" data-focus="p-${esc(id)}" aria-label="${name} position" ${dis}>`;
+    return `<div class="tile ${on ? "on" : ""}">${head(null, false)}<div class="extra">${html}</div></div>`;
+  }
+  /**
+   * A top-down/bottom-up shade: the tile's entity is the bottom rail, top_entity the top rail.
+   * Only one end opens at a time; opening one closes the other first.
+   */
+  _shadeTile(e, { name, head, dis }) {
+    const id = e.entity, top = e.top_entity, ts = this._s(top);
+    const b = this._railPos(id), t = this._railPos(top);
+    const off = dis || !available(ts) ? "disabled" : "";
+    const mode = b > 0 && t > 0 ? "both" : t > 0 ? "top" : b > 0 ? "bottom" : "closed";
+    const btn = (rail, label, title) => `<button data-action="shade" data-rail="${rail}" data-entity="${esc(id)}" data-focus="sh-${esc(id)}-${rail}" aria-pressed="${mode === (rail === "none" ? "closed" : rail)}" title="${title}" ${off}>${label}</button>`;
+    let html = `<div class="seg" role="group" aria-label="${name}">${btn("top", "Top", "Open from the top")}${btn("none", "Close", "Close")}${btn("bottom", "Bottom", "Open from the bottom")}</div>`;
+    if (mode === "top" || mode === "bottom") {
+      const rail = mode === "top" ? top : id, v = mode === "top" ? t : b;
+      html += `<div class="ctl"><span class="ctl-l">${mode === "top" ? "Open from the top" : "Open from the bottom"}</span><input class="range" type="range" min="0" max="100" step="1" value="${v}" data-action="shade-pos" data-rail="${mode}" data-entity="${esc(id)}" data-focus="sp-${esc(id)}" aria-label="${name} ${mode} opening" ${off}></div>`;
+    }
+    return `<div class="tile ${mode === "closed" ? "" : "on"}">${head(null, false)}<div class="extra">${html}</div></div>`;
+  }
+  /** Move one rail of a top-down/bottom-up shade, closing the other end first so both are never open. */
+  async _shade(id, rail, position) {
+    const e = this._cfg(id); if (!e?.top_entity || !this._allowed(e.top_entity)) return;
+    const top = e.top_entity, ids = [id, top];
+    if (ids.some((x) => this._seq.has(x))) return;
+    ids.forEach((x) => this._seq.add(x)); this._request();
+    try {
+      if (rail === "none") { await Promise.all(ids.filter((x) => this._railPos(x) > 0).map((x) => this._call(x, "cover", "close_cover"))); return; }
+      const me = rail === "top" ? top : id, other = rail === "top" ? id : top;
+      if (this._railPos(other) > 0) {
+        if (!(await this._call(other, "cover", "set_cover_position", { position: 0 }))) return;
+        // wait for the other end to report closed: the hub won't move a rail into the other one
+        for (let n = 0; n < 240 && this._railPos(other) > 0; n++) await sleep(250);
+        if (this._railPos(other) > 0) { this._showToast(`The other end of ${this._name(e)} didn't close, so this end stayed put.`); return; }
+      }
+      await this._call(me, "cover", "set_cover_position", { position: Math.max(0, Math.min(100, Math.round(position))) });
+    } finally { ids.forEach((x) => this._seq.delete(x)); this._request(); }
+  }
+  /** A tile's configuration, by its entity (the first room that has it). */
+  _cfg(id) { for (const r of this._config?.rooms || []) for (const e of this._ents(r)) if (e.entity === id) return e; return null; }
+  _stateText(s, e = {}) {
     const d = domainOf(s.entity_id), a = s.attributes;
+    if (d === "cover" && e.top_entity) {
+      const b = this._railPos(s.entity_id), t = this._railPos(e.top_entity);
+      if (!available(this._s(e.top_entity))) return "Top rail unavailable";
+      return b > 0 && t > 0 ? `Both ends open · top ${t}% · bottom ${b}%` : t > 0 ? `Open from the top · ${t}%` : b > 0 ? `Open from the bottom · ${b}%` : "Closed";
+    }
+    if (d === "cover" && num(a.current_position) && s.state !== "closed") return `${titleCase(s.state)} · ${Math.round(a.current_position)}%`;
     if (d === "light" && isOn(s) && num(a.brightness)) return `On · ${Math.round(a.brightness / 2.55)}%`;
-    if (d === "climate") return `${titleCase(String(s.state).replace(/_/g, " "))}${num(a.current_temperature) ? ` · ${a.current_temperature}°` : ""}`;
-    if (d === "media_player" && isOn(s) && num(a.volume_level)) return `On · vol ${Math.round(a.volume_level * 100)}%`;
+    if (d === "climate") {
+      const mode = HVAC[s.state]?.[0] || titleCase(String(s.state).replace(/_/g, " "));
+      const action = a.hvac_action && !["idle", "off"].includes(a.hvac_action) && s.state !== "off" ? ` · ${String(a.hvac_action).replace(/_/g, " ")}` : "";
+      return `${mode}${action}${num(a.current_temperature) ? ` · ${a.current_temperature}° now` : ""}`;
+    }
+    if (d === "media_player" && isOn(s)) {
+      const what = a.app_name || a.source || (s.state === "playing" ? "Playing" : s.state === "paused" ? "Paused" : "On");
+      return `${what}${a.is_volume_muted ? " · muted" : num(a.volume_level) ? ` · vol ${Math.round(a.volume_level * 100)}%` : ""}`;
+    }
     if (d === "sensor") return `${s.state}${a.unit_of_measurement ? ` ${a.unit_of_measurement}` : ""}`;
     if (d === "binary_sensor") return isOn(s) ? "Detected" : "Clear";
     if (["scene", "script", "button", "input_button"].includes(d)) return "Tap to run";
@@ -543,10 +689,10 @@ export class Floor3dSnapshotCard extends HTMLElement {
   // ---- actions --------------------------------------------------------------
   _allowed(id) { return this._entities.has(id); }
   async _call(id, domain, service, data = {}) {
-    if (!this._allowed(id)) return;
+    if (!this._allowed(id)) return false;
     this._busy.add(id); this._request();
-    try { await this._hass.callService(domain, service, { entity_id: id, ...data }); }
-    catch (err) { this._showToast(`Couldn't change ${this._name({ entity: id })}.`); }
+    try { await this._hass.callService(domain, service, { entity_id: id, ...data }); return true; }
+    catch (err) { this._showToast(`Couldn't change ${this._name({ entity: id })}.`); return false; }
     finally { this._busy.delete(id); this._request(); }
   }
   _showToast(text) { this._toast = text; clearTimeout(this._toastTimer); this._toastTimer = setTimeout(() => { this._toast = ""; this._request(); }, 5000); this._request(); }
@@ -568,8 +714,34 @@ export class Floor3dSnapshotCard extends HTMLElement {
     }
     if (!s || !this._allowed(id)) return;
     if (action === "toggle") {
-      if (d === "media_player") this._call(id, d, isOn(s) ? "turn_off" : "turn_on");
+      const e = this._cfg(id) || {};
+      // a TV that can't be woken through its media player may still wake through its remote
+      if (d === "media_player" && !isOn(s) && !(Number(s.attributes.supported_features) & MP.TURN_ON) && e.remote && this._allowed(e.remote)) this._call(e.remote, "remote", "turn_on");
       else this._call(id, d, isOn(s) ? "turn_off" : "turn_on");
+    } else if (action === "climate-power") {
+      const level = this._thermoLevel(); if (level !== "full" && level !== "setpoint_power") return;
+      const f = Number(s.attributes.supported_features) || 0;
+      if (isOn(s)) f & 128 ? this._call(id, "climate", "turn_off") : this._call(id, "climate", "set_hvac_mode", { hvac_mode: "off" });
+      else if (f & 256) this._call(id, "climate", "turn_on");
+      else { const m = this._resumeMode(s); if (m) this._call(id, "climate", "set_hvac_mode", { hvac_mode: m }); }
+    } else if (action === "hvac") {
+      if (this._thermoLevel() !== "full") return;
+      const m = b.dataset.mode; if ((s.attributes.hvac_modes || []).includes(m)) this._call(id, "climate", "set_hvac_mode", { hvac_mode: m });
+    } else if (action === "tv") {
+      const a = s.attributes, cmd = b.dataset.cmd, e = this._cfg(id) || {}, keys = this._remoteKeys(e);
+      const send = (k) => keys[k] && this._allowed(e.remote) && this._call(e.remote, "remote", "send_command", { command: keys[k] });
+      if (cmd === "mute") this._call(id, "media_player", "volume_mute", { is_volume_muted: !a.is_volume_muted });
+      else if (cmd === "vol-down") this._call(id, "media_player", "volume_down");
+      else if (cmd === "vol-up") { if (!(num(a.volume_level) && Number(a.volume_level) >= this._volCap() - 0.001)) this._call(id, "media_player", "volume_up"); }
+      else if (cmd === "ch-up") send("channel_up");
+      else if (cmd === "ch-down") send("channel_down");
+      else if (cmd === "info") send("info");
+      else if (cmd === "prev") this._call(id, "media_player", "media_previous_track");
+      else if (cmd === "next") this._call(id, "media_player", "media_next_track");
+      else if (cmd === "play-pause") this._call(id, "media_player", "media_play_pause");
+    } else if (action === "shade") {
+      const rail = b.dataset.rail;
+      this._shade(id, rail, 100);
     } else if (action === "color") {
       if (d !== "light") return;
       this._call(id, "light", "turn_on", { hs_color: [Number(b.dataset.h), Number(b.dataset.s)] });
@@ -581,9 +753,20 @@ export class Floor3dSnapshotCard extends HTMLElement {
       if (g && SENSITIVE_COVERS.has(s.attributes.device_class) && svc !== "close_cover") return;
       this._call(id, "cover", svc);
     } else if (action === "temp") {
-      const t = Number(s.attributes.temperature) + Number(b.dataset.value), r = this._config.temperature_range;
-      if (r && (t < r[0] || t > r[1])) return;
-      this._call(id, "climate", "set_temperature", { temperature: Math.round(t * 10) / 10 });
+      if (this._thermoLevel() === "view") return;
+      const a = s.attributes, step = this._tempStep(a), [lo, hi] = this._tempLimits(a), delta = Number(b.dataset.value);
+      const rnd = (v) => Math.round(Math.round(v / step) * step * 10) / 10;
+      if (!b.dataset.which) {
+        const t = rnd(Number(a.temperature) + delta);
+        if (t < lo || t > hi) return;
+        this._call(id, "climate", "set_temperature", { temperature: t });
+      } else {
+        const gap = this._gap(a);
+        let L = Number(a.target_temp_low), H = Number(a.target_temp_high);
+        if (b.dataset.which === "low") { L = rnd(L + delta); if (H - L < gap) H = rnd(L + gap); } else { H = rnd(H + delta); if (H - L < gap) L = rnd(H - gap); }
+        if (L < lo || H > hi) return;
+        this._call(id, "climate", "set_temperature", { target_temp_low: L, target_temp_high: H });
+      }
     } else if (action === "lock" || action === "unlock" || action === "run") {
       if (action === "unlock" && g) return;
       // Two-tap confirmation, shown in the tile itself (no browser dialogs).
@@ -598,9 +781,21 @@ export class Floor3dSnapshotCard extends HTMLElement {
     }
   }
   _change(ev) {
-    const i = ev.target; if (!i.matches("input[type=range]")) return;
+    const i = ev.target;
+    if (i.matches("select[data-action=source]")) {
+      const id = i.dataset.entity, e = this._cfg(id) || {}, list = this._s(id)?.attributes?.source_list || [];
+      i.blur();
+      if (this._allowed(id) && i.value && list.includes(i.value) && (!Array.isArray(e.sources) || e.sources.includes(i.value))) this._call(id, "media_player", "select_source", { source: i.value });
+      return;
+    }
+    if (!i.matches("input[type=range]")) return;
     this._dragging = false;
     const id = i.dataset.entity; if (!this._allowed(id)) return;
+    if (i.dataset.action === "position") {
+      const st = this._s(id);
+      if (!(this._guest() && SENSITIVE_COVERS.has(st?.attributes?.device_class))) this._call(id, "cover", "set_cover_position", { position: Number(i.value) });
+    }
+    if (i.dataset.action === "shade-pos") this._shade(id, i.dataset.rail, Number(i.value));
     if (i.dataset.action === "brightness") this._call(id, "light", "turn_on", { brightness_pct: Number(i.value) });
     if (i.dataset.action === "kelvin") this._call(id, "light", "turn_on", { color_temp_kelvin: Number(i.value) });
     if (i.dataset.action === "volume") {

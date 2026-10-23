@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0 — 2026-10-23
+
+- **Thermostats.** An on/off switch on the tile (`climate.turn_on`/`turn_off`, or the last mode through `set_hvac_mode` when the thermostat lacks them). In Heat/Cool the tile shows *Heat to* and *Cool to* and sets `target_temp_low`/`target_temp_high` (an ecobee in Heat/Cool couldn't be set before), keeping them apart. Mode buttons with guest mode off. New `guest_thermostat` (`setpoint_power` default, `setpoint`, `full`, `view`) sets what guests may do; `temperature_range` now limits guests only, and the thermostat's own min/max apply otherwise.
+- **TVs.** What's playing, volume slider or − / + steps (both capped by `max_volume`), mute, channel − / + through the TV's `remote` (Samsung and Android TV keys built in, `remote_commands` for others; Samsung's next/previous otherwise), *Info*, and a source list (`sources` limits it). Power-on falls back to the remote for TVs whose media player can't wake them.
+- **Shades.** Covers with a position get a slider. A top-down/bottom-up shade (`top_entity`: the top rail) is one tile with *Top* / *Close* / *Bottom* and a slider; opening one end closes the other first, so both are never open at once.
+- Editor: *TV remote* for media players, *Top rail* for covers, and *Thermostats in guest mode* in Display.
+
 ## 0.11.1 — 2026-10-23
 
 - *Create a Guest mode switch* never makes a second helper. It reuses an existing one: `input_boolean.guest_mode`, a helper created with the id `guest_mode`, or any toggle helper named “Guest mode”. The button is disabled while it works, so a second press can't race the first. After creating, it reads the actual entity id back from the entity registry, which differs (`guest_mode_2`) when the id is taken, and links that.
