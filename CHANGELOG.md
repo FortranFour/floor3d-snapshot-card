@@ -2,7 +2,7 @@
 
 ## 0.8.0 — 2026-10-23
 
-- **White warmth and colour.** A light that is on (or the dimmer behind a switch) can show a warmth slider (`color_temp_kelvin`, within the bulb's range) and nine colour swatches (`hs_color`, with the current colour ringed), each only when the bulb supports it. With more than one control, each gets a small label.
+- **White warmth and color.** A light that is on (or the dimmer behind a switch) can show a warmth slider (`color_temp_kelvin`, within the bulb's range) and a color wheel of pastel swatches, white in the middle and eight hues around it (`hs_color` at a soft saturation, the current color ringed), each only when the bulb supports it. With more than one control, each gets a small label.
 - **Choose what shows.** *Display → Light controls* has card-wide switches: `brightness_slider`, `white_slider` (both on by default) and `color_swatches` (off by default in guest mode). Per tile, `controls: [brightness, white, color]`, set from *Light controls on this tile*, overrides them; `[]` leaves on/off only.
 
 ## 0.7.0 — 2026-10-23
@@ -12,7 +12,7 @@
 ## 0.6.0 — 2026-10-22
 
 - **three.js 0.186** (from 0.170), the version floor3dx-card 2.x renders with. The models' object names are made unique the way three.js r130 did (`1_1`, `1_1_1`, `1_1_1_1` for duplicates), so the `panels`, rooms and anchors copied from a floor3d or floor3dx configuration keep matching; current loaders number duplicates differently and the names a configuration refers to could be missing from the model.
-- **Four more styles**, the look themes floor3dx-card added since: **Paper**, **Ember**, **Pastel** and **Custom colours**. Custom shows four colour pickers under the style (dark, light, edges, stage) and keeps the rest — walls, floors, daytime stage, how much hue shows through — behind *More custom colours*; the stage behind the map and the edge glow follow the chosen stage colour. *Find floor3d cards* copies any of the seven themes and the custom colours from the floor3dx card. `node dev/style-test.mjs` renders all eight styles.
+- **Four more styles**, the look themes floor3dx-card added since: **Paper**, **Ember**, **Pastel** and **Custom colors**. Custom shows four color pickers under the style (dark, light, edges, stage) and keeps the rest — walls, floors, daytime stage, how much hue shows through — behind *More custom colors*; the stage behind the map and the edge glow follow the chosen stage color. *Find floor3d cards* copies any of the seven themes and the custom colors from the floor3dx card. `node dev/style-test.mjs` renders all eight styles.
 
 ## 0.5.1 — 2026-10-20
 
@@ -39,7 +39,7 @@
 
 ## 0.3.0 — 2026-10-17
 
-- **Styles**: Neon, Blueprint and Day, the look themes of floor3dx-card (muted per-pixel surface colours, edge lines that glow in Neon and Blueprint, saturated colours kept), alongside the standard look. Themed maps sit on the theme's stage colour, which follows the sun when sunlight is on.
+- **Styles**: Neon, Blueprint and Day, the look themes of floor3dx-card (muted per-pixel surface colors, edge lines that glow in Neon and Blueprint, saturated colors kept), alongside the standard look. Themed maps sit on the theme's stage color, which follows the sun when sunlight is on.
 - **View**: turn (Y), tilt (X) and the new roll (Z), down to a straight plan view. The snapshot stays an orthographic projection.
 - **3D preview** in the editor: drag to turn and tilt, scroll to zoom, styled as it will render; *Reset view* and *Straight down*.
 - Picking a floor3dx card copies its `look.theme` and `north` when they aren't already set here.

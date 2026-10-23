@@ -24,7 +24,7 @@ export const VIEW_DEFAULTS = {
   hide_panels: true, // hide each model's `panels` (objects its floor3d card uses for text and pictures)
   sunlight: false,   // also bake the lighting layer; the picture is lit evenly so the card can relight it
   style: "standard", // standard | neon | blueprint | day | paper | ember | pastel | custom (the floor3dx look themes)
-  accent: "#37e0ff", // neon edge colour
+  accent: "#37e0ff", // neon edge color
   custom: undefined, // custom theme: { dark, light, walls, floors, hue, edges, stage, stage_day } as floor3dx-card's look.custom
   roll: 0,           // degrees, turns the picture about the view axis
   keep_signal: true, walls: "wall", floors: "room, floor",
@@ -263,7 +263,7 @@ class Session {
     onProgress("Styling…"); await tick();
     const theme = THEME_INDEX[cfg.style] ?? -1;
     const look = theme >= 0 ? new LookThemer(theme, cfg) : null;
-    if (look) {            // themes are flat colours: neutral lighting, no filmic curve (as in floor3dx)
+    if (look) {            // themes are flat colors: neutral lighting, no filmic curve (as in floor3dx)
       renderer.toneMapping = THREE.NoToneMapping;
       scene.environmentIntensity = 0.12;
     }
@@ -615,7 +615,7 @@ export function fitCamera(cam, box, pad = 1.08, aspect = 0) {
 // The themes of floor3dx-card's look (2.x): 0 neon, 1 blueprint, 2 day, 3 paper, 4 ember, 5 pastel, 6 custom.
 const THEME_INDEX = { neon: 0, blueprint: 1, day: 2, paper: 3, ember: 4, pastel: 5, custom: 6 };
 const THEME_NAMES = ["neon", "blueprint", "day", "paper", "ember", "pastel", "custom"];
-/** Stage (background) colours, night and day, per theme (custom: from view.custom). */
+/** Stage (background) colors, night and day, per theme (custom: from view.custom). */
 export const STAGES = {
   neon: { night: "#0b1120", day: "#1a2c4e" }, blueprint: { night: "#1a4682", day: "#225696" }, day: { night: "#d6e0ee", day: "#f2f6fb" },
   paper: { night: "#c4b8a0", day: "#f0e8d4" }, ember: { night: "#141012", day: "#3a2e2a" }, pastel: { night: "#c4c8dc", day: "#f0f2fa" },
@@ -627,8 +627,8 @@ const LIGHT_STAGE = new Set([2, 3, 5]);
 export const CUSTOM_DEFAULTS = { dark: "#1c2230", light: "#6c7a96", edges: "#e8f0ff", stage: "#10141c", hue: 0.15 };
 const parseHex = (v) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(v || "").trim()); return m ? `#${m[1].toLowerCase()}` : null; };
 const hexVec = (hex) => { const c = new THREE.Color(hex); return new THREE.Vector3(c.r, c.g, c.b); };
-/** The custom theme's colours, each falling back as floor3dx-card does. */
-export function customColours(c = {}) {
+/** The custom theme's colors, each falling back as floor3dx-card does. */
+export function customColors(c = {}) {
   const dark = parseHex(c.dark) || CUSTOM_DEFAULTS.dark, light = parseHex(c.light) || CUSTOM_DEFAULTS.light;
   const hue = Number(c.hue), stage = parseHex(c.stage) || CUSTOM_DEFAULTS.stage;
   return { dark, light, walls: parseHex(c.walls) || light, floors: parseHex(c.floors) || light, hue: isNaN(hue) ? CUSTOM_DEFAULTS.hue : Math.max(0, Math.min(1, hue)), edges: parseHex(c.edges) || CUSTOM_DEFAULTS.edges, stage, stage_day: parseHex(c.stage_day) || stage };
@@ -685,7 +685,7 @@ class LookThemer {
   constructor(index, cfg) {
     this.index = index; this.cfg = cfg;
     this.walls = prefixes(cfg.walls); this.floors = prefixes(cfg.floors);
-    this.custom = customColours(cfg.custom);
+    this.custom = customColors(cfg.custom);
   }
   /** Dark stage: the edge lines glow (additive, blurred); light stage: plain lines. */
   get lightStage() { return this.index === 6 ? new THREE.Color(this.custom.stage).getHSL({}).l > 0.5 : LIGHT_STAGE.has(this.index); }
@@ -716,7 +716,7 @@ class LookThemer {
   }
   edgeMaterial() {
     const accent = parseHex(this.cfg.accent);
-    // neon: the accent colour (Edge colour in the editor); custom: its own edge colour; others: the theme's
+    // neon: the accent color (Edge color in the editor); custom: its own edge color; others: the theme's
     const color = this.index === 0 ? new THREE.Color(accent || "#37e0ff") : this.index === 6 ? new THREE.Color(this.custom.edges) : new THREE.Color(EDGE_COLORS[this.index]);
     return new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: false, blending: this.lightStage ? THREE.NormalBlending : THREE.AdditiveBlending });
   }

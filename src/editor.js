@@ -10,17 +10,17 @@ const slug = (name, taken = new Set()) => {
 };
 const hash = (v) => { const s = JSON.stringify(v); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const ENTITY_DOMAINS = /^(light|switch|fan|cover|climate|media_player|lock|input_boolean|scene|script|sensor|binary_sensor|remote|button|input_button|vacuum|humidifier|valve|water_heater|alarm_control_panel)\./;
-const STYLES = [["standard", "Standard"], ["neon", "Neon"], ["blueprint", "Blueprint"], ["day", "Day"], ["paper", "Paper"], ["ember", "Ember"], ["pastel", "Pastel"], ["custom", "Custom colours"]];
+const STYLES = [["standard", "Standard"], ["neon", "Neon"], ["blueprint", "Blueprint"], ["day", "Day"], ["paper", "Paper"], ["ember", "Ember"], ["pastel", "Pastel"], ["custom", "Custom colors"]];
 const STAGE_BG = { neon: "#0b1120", blueprint: "#1a4682", day: "#d6e0ee", paper: "#c4b8a0", ember: "#141012", pastel: "#c4c8dc" };
 const THEME_NAMES = STYLES.map(([k]) => k).filter((k) => k !== "standard");
 const CUSTOM_DEFAULTS = { dark: "#1c2230", light: "#6c7a96", edges: "#e8f0ff", stage: "#10141c", hue: 0.15 };
 const THEME_NOTES = {
-  neon: "Dark navy surfaces with glowing edge lines in the edge colour.", blueprint: "Shades of blue with pale lines.", day: "Light grey surfaces with dark navy lines.",
-  paper: "An architect's drawing: cream card, ink lines.", ember: "Charcoal with a warm cast and amber lines.", pastel: "The model's own colours, lightened and softened.",
-  custom: "Your colours: dark where the model is dark, light where it is bright; walls and floors can have their own light tone.",
+  neon: "Dark navy surfaces with glowing edge lines in the edge color.", blueprint: "Shades of blue with pale lines.", day: "Light grey surfaces with dark navy lines.",
+  paper: "An architect's drawing: cream card, ink lines.", ember: "Charcoal with a warm cast and amber lines.", pastel: "The model's own colors, lightened and softened.",
+  custom: "Your colors: dark where the model is dark, light where it is bright; walls and floors can have their own light tone.",
 };
 const VIEW_RESET = { azimuth: 45, elevation: 52, roll: 0 };
-const CONTROL_SETS = [["", "Card default"], ["brightness", "Brightness only"], ["brightness,white", "Brightness and warmth"], ["brightness,white,color", "Brightness, warmth and colour"], ["none", "On/off only"]];
+const CONTROL_SETS = [["", "Card default"], ["brightness", "Brightness only"], ["brightness,white", "Brightness and warmth"], ["brightness,white,color", "Brightness, warmth and color"], ["none", "On/off only"]];
 const PLACES = [["east", "East of first model"], ["west", "West"], ["north", "North"], ["south", "South"], ["as-is", "Keep model coordinates"]];
 
 /** The part of the configuration a snapshot depends on. */
@@ -147,22 +147,22 @@ ${a?.object ? "" : `<p class="note warn">No floor object and no anchor: this roo
 ${sugg.length ? `<div class="chips"><span class="note" style="margin:0 4px 0 0">From the floor3d card:</span>${sugg.slice(0, 8).map((s) => `<button class="icon" data-act="anchor-pick" data-i="${i}" data-model="${s.model}" data-obj="${esc(s.object)}">${esc(multi ? `${s.model + 1}:${s.object}` : s.object)}</button>`).join("")}</div>` : ""}`;
   }
 
-  // The custom theme's colours: the four that matter in a row, the rest behind "More".
-  _customColours(cu) {
+  // The custom theme's colors: the four that matter in a row, the rest behind "More".
+  _customColors(cu) {
     const pick = (key, label, dflt) => `<label style="flex:0 0 auto;min-width:0">${label}<input type="color" data-field="view.custom.${key}" value="${esc(cu[key] || dflt)}" data-key="cc${key}"></label>`;
     const hue = cu.hue ?? CUSTOM_DEFAULTS.hue;
     return `<div class="row">${pick("dark", "Dark", CUSTOM_DEFAULTS.dark)}${pick("light", "Light", CUSTOM_DEFAULTS.light)}${pick("edges", "Edges", CUSTOM_DEFAULTS.edges)}${pick("stage", "Stage", CUSTOM_DEFAULTS.stage)}</div>
-<details><summary>More custom colours</summary><div class="row">${pick("walls", "Walls", cu.light || CUSTOM_DEFAULTS.light)}${pick("floors", "Floors", cu.light || CUSTOM_DEFAULTS.light)}${pick("stage_day", "Stage by day", cu.stage || CUSTOM_DEFAULTS.stage)}<label>Hue kept: <span>${Math.round(hue * 100)}%</span><input type="range" min="0" max="1" step="0.05" data-field="view.custom.hue" data-num value="${hue}" data-key="cchue"></label></div>
-<p class="note">Walls and floors default to the light colour, the day stage to the stage colour. Hue kept: how much of the model's own colour shows through.</p></details>`;
+<details><summary>More custom colors</summary><div class="row">${pick("walls", "Walls", cu.light || CUSTOM_DEFAULTS.light)}${pick("floors", "Floors", cu.light || CUSTOM_DEFAULTS.light)}${pick("stage_day", "Stage by day", cu.stage || CUSTOM_DEFAULTS.stage)}<label>Hue kept: <span>${Math.round(hue * 100)}%</span><input type="range" min="0" max="1" step="0.05" data-field="view.custom.hue" data-num value="${hue}" data-key="cchue"></label></div>
+<p class="note">Walls and floors default to the light color, the day stage to the stage color. Hue kept: how much of the model's own color shows through.</p></details>`;
   }
 
   _snapshotSection(status) {
     const c = this._config, v = c.view || {}, snap = c.snapshot;
     const store = c.storage || "upload";
     return `<p class="note">Renders a static picture of the model in this browser and stores it with Home Assistant, so guests' devices never run 3D.</p>
-<div class="row"><label>Style<select data-field="view.style" data-key="vst">${STYLES.map(([k, t]) => `<option value="${k}" ${(v.style || "standard") === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>${v.style === "neon" ? `<label style="flex:0 0 auto;min-width:0">Edge colour<input type="color" data-field="view.accent" value="${esc(v.accent || "#37e0ff")}" data-key="vac"></label>` : ""}</div>
-${v.style && v.style !== "standard" ? `<p class="note">${THEME_NOTES[v.style] || ""} The floor3dx-card look themes recolour surfaces per pixel and draw edge lines; the map sits on the theme's stage colour. Bright, saturated colours keep their colour.</p>` : ""}
-${v.style === "custom" ? this._customColours(v.custom || {}) : ""}
+<div class="row"><label>Style<select data-field="view.style" data-key="vst">${STYLES.map(([k, t]) => `<option value="${k}" ${(v.style || "standard") === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>${v.style === "neon" ? `<label style="flex:0 0 auto;min-width:0">Edge color<input type="color" data-field="view.accent" value="${esc(v.accent || "#37e0ff")}" data-key="vac"></label>` : ""}</div>
+${v.style && v.style !== "standard" ? `<p class="note">${THEME_NOTES[v.style] || ""} The floor3dx-card look themes recolor surfaces per pixel and draw edge lines; the map sits on the theme's stage color. Bright, saturated colors keep their color.</p>` : ""}
+${v.style === "custom" ? this._customColors(v.custom || {}) : ""}
 <label>View — the picture stays an orthographic (true-scale) projection</label>
 <div class="row"><label>Turn (Y): <span data-unit="°">${esc(v.azimuth ?? 45)}°</span><input type="range" min="0" max="359" step="1" data-field="view.azimuth" data-num data-view="azimuth" value="${esc(v.azimuth ?? 45)}" data-key="va"></label><label>Tilt (X): <span data-unit="°">${esc(v.elevation ?? 52)}°</span><input type="range" min="5" max="90" step="1" data-field="view.elevation" data-num data-view="elevation" value="${esc(v.elevation ?? 52)}" data-key="ve"></label><label>Roll (Z): <span data-unit="°">${esc(v.roll ?? 0)}°</span><input type="range" min="-180" max="180" step="1" data-field="view.roll" data-num data-view="roll" value="${esc(v.roll ?? 0)}" data-key="vr"></label></div>
 <div class="row"><button data-act="preview" ${!c.models.length ? "disabled" : ""}>${this._previewOpen ? "Hide 3D preview" : "Show 3D preview"}</button>${this._previewOpen ? '<button data-act="view-reset">Reset view</button><button data-act="view-top">Straight down</button>' : ""}</div>
@@ -209,7 +209,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
 <div class="row"><label>Start with room<select data-field="default_room" data-key="dr"><option value="">First room</option>${c.rooms.map((r) => `<option value="${esc(r.id)}" ${c.default_room === r.id ? "selected" : ""}>${esc(r.name || r.id)}</option>`).join("")}</select></label><label>Layout<select data-field="layout" data-key="dl">${[["", "Automatic"], ["side", "Map beside controls"], ["stacked", "Map above controls"]].map(([v, t]) => `<option value="${v}" ${(c.layout || "") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label></div>
 <div class="row"><label>Room buttons under the map<select data-field="room_list" data-key="dl2">${[["", "Rooms the map can't show"], ["always", "All rooms"], ["never", "Never"]].map(([v, t]) => `<option value="${v}" ${(c.room_list || "") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label></div>
 <label>Light controls on each tile (when the light supports them)</label>
-<div class="row"><label class="check"><input type="checkbox" data-field="brightness_slider" data-bool data-default-true ${c.brightness_slider !== false ? "checked" : ""}>Brightness slider</label><label class="check"><input type="checkbox" data-field="white_slider" data-bool data-default-true ${c.white_slider !== false ? "checked" : ""}>White warmth slider</label><label class="check"><input type="checkbox" data-field="color_swatches" data-bool data-explicit ${(c.color_swatches ?? (c.guest_mode === false)) ? "checked" : ""}>Colour swatches${c.color_swatches === undefined && c.guest_mode !== false ? " (off in guest mode)" : ""}</label></div>
+<div class="row"><label class="check"><input type="checkbox" data-field="brightness_slider" data-bool data-default-true ${c.brightness_slider !== false ? "checked" : ""}>Brightness slider</label><label class="check"><input type="checkbox" data-field="white_slider" data-bool data-default-true ${c.white_slider !== false ? "checked" : ""}>White warmth slider</label><label class="check"><input type="checkbox" data-field="color_swatches" data-bool data-explicit ${(c.color_swatches ?? (c.guest_mode === false)) ? "checked" : ""}>Color swatches${c.color_swatches === undefined && c.guest_mode !== false ? " (off in guest mode)" : ""}</label></div>
 <label class="check"><input type="checkbox" data-field="guest_mode" data-bool data-default-true ${c.guest_mode !== false ? "checked" : ""}>Guest mode — locks can only be locked, garage doors and gates only closed, alarms are read-only, TV volume is capped</label>
 <div class="row"><label>Max volume (0–1)<input type="number" min="0" max="1" step="0.05" data-field="max_volume" data-num value="${esc(c.max_volume ?? "")}" placeholder="${c.guest_mode !== false ? "0.6" : "1"}" data-key="dv"></label><label>Thermostat min<input type="number" data-field="temperature_range.0" data-num value="${esc(c.temperature_range?.[0] ?? "")}" data-key="dmin"></label><label>Thermostat max<input type="number" data-field="temperature_range.1" data-num value="${esc(c.temperature_range?.[1] ?? "")}" data-key="dmax"></label></div>
 <p class="note">A dashboard is not a security boundary: give guests a non-admin Home Assistant user, and use Home Assistant permissions for anything that must be enforced.</p>`;

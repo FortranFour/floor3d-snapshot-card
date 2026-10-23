@@ -12,7 +12,7 @@ Actual card created from existing floor3dx-card:
 - **Static and light.** The card shows a pre-rendered isometric picture of your model. Tablets and phones download one ~34 KB module and two images (typically 100–200 KB); no 3D runs on them.
 - **Tap a floor, get its controls.** Each room's floor is the button. The selected room is washed in your theme color, rooms with something on glow amber, and a mouse hover names the room. Pins stay hidden so the picture stays clean (a **Labels** toggle shows them).
 - **Built from your floor3d card.** The visual editor finds floor3d cards in your dashboards, loads the model, detects rooms, names them, and places the card's lights, switches, fans, covers, media players, thermostats and locks into the room each one stands in. You review and edit.
-- **Four styles.** Standard, or the Neon, Blueprint and Day look themes of [floor3dx-card](https://github.com/FortranFour/floor3dx-card), each on its own stage colour.
+- **Four styles.** Standard, or the Neon, Blueprint and Day look themes of [floor3dx-card](https://github.com/FortranFour/floor3dx-card), each on its own stage color.
 - **See-through walls.** One slider makes every wall transparent by the amount you choose, so rooms behind walls show and can be tapped.
 - **Any view angle.** Turn (Y), tilt (X) and roll (Z) the model in a live 3D preview in the editor. The picture is always an orthographic, true-scale projection.
 - **Sunlight (optional).** Shading and wall shadows follow the real sun across your house through the day, from your Home Assistant location and a north direction you set. Dawn and dusk turn warm, night turns a muted blue, and rooms with lights on glow after dark.
@@ -46,15 +46,15 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 
 *Style* in the Snapshot section offers the standard clay look and the look themes of floor3dx-card 2.x. The first three come from NeonPlan 3D and NextFloor:
 
-- **Neon:** dark navy surfaces with glowing edge lines; *Edge colour* sets the glow (default `#37e0ff`).
+- **Neon:** dark navy surfaces with glowing edge lines; *Edge color* sets the glow (default `#37e0ff`).
 - **Blueprint:** shades of blue with pale edge lines.
 - **Day:** light grey surfaces with dark navy lines.
 - **Paper** (0.6): an architect's drawing, cream card with ink lines.
 - **Ember** (0.6): charcoal with a warm cast and amber lines.
-- **Pastel** (0.6): the model's own colours, lightened and softened, on a pale stage.
-- **Custom colours** (0.6): your own. Four pickers appear under the style: *Dark* (where the model is dark), *Light* (where it is bright), *Edges* and *Stage*; *More custom colours* adds separate light tones for walls and floors, a stage colour for daytime, and how much of the model's own hue shows through. The same colours as floor3dx-card's `look.custom`, and *Find floor3d cards* copies them from a card that uses the custom theme.
+- **Pastel** (0.6): the model's own colors, lightened and softened, on a pale stage.
+- **Custom colors** (0.6): your own. Four pickers appear under the style: *Dark* (where the model is dark), *Light* (where it is bright), *Edges* and *Stage*; *More custom colors* adds separate light tones for walls and floors, a stage color for daytime, and how much of the model's own hue shows through. The same colors as floor3dx-card's `look.custom`, and *Find floor3d cards* copies them from a card that uses the custom theme.
 
-Each theme recolours surfaces per pixel, so textures still show as pattern. Walls (`wall…` objects) and floors (`room…`, `floor…`) get their own tints. Bright, saturated colours keep their colour. The card shows the picture on the theme's stage colour; with sunlight on, the stage runs from its night colour to its day colour. If the floor3dx card you pick in *Find floor3d cards* has a `look.theme` or a `north`, the editor copies them in.
+Each theme recolors surfaces per pixel, so textures still show as pattern. Walls (`wall…` objects) and floors (`room…`, `floor…`) get their own tints. Bright, saturated colors keep their color. The card shows the picture on the theme's stage color; with sunlight on, the stage runs from its night color to its day color. If the floor3dx card you pick in *Find floor3d cards* has a `look.theme` or a `north`, the editor copies them in.
 
 ## A switch and the bulb behind it
 
@@ -62,7 +62,7 @@ A wall switch that powers a smart bulb has its on/off on one entity (`switch.…
 
 ## Light controls
 
-A light that is on can show up to three controls: a **brightness** slider, a **white warmth** slider (bulbs with colour temperature), and a row of **colour swatches** (colour bulbs; the current colour is ringed). Each appears only when the bulb supports it. *Display → Light controls* switches each one on or off for the whole card; colour swatches are off by default while guest mode is on. A single tile can override that with *Light controls on this tile* in the room editor:
+A light that is on can show up to three controls: a **brightness** slider, a **white warmth** slider (bulbs with color temperature), and a **color wheel** of pastel swatches, white in the middle and eight hues around it (color bulbs; the current color is ringed). Each appears only when the bulb supports it. *Display → Light controls* switches each one on or off for the whole card; color swatches are off by default while guest mode is on. A single tile can override that with *Light controls on this tile* in the room editor:
 
 ```yaml
 - entity: light.living_room_lamp
@@ -121,7 +121,7 @@ models:
     rotate: 0
 view:
   style: neon              # standard | neon | blueprint | day | paper | ember | pastel | custom
-  accent: '#37e0ff'        # neon edge colour
+  accent: '#37e0ff'        # neon edge color
   # custom: { dark: '#1c2230', light: '#6c7a96', edges: '#e8f0ff', stage: '#10141c',   # style: custom
   #           walls: '#6c7a96', floors: '#6c7a96', stage_day: '#10141c', hue: 0.15 }
   azimuth: 45              # turn (Y), degrees
@@ -180,7 +180,7 @@ snapshot:                  # written by the editor's Render button
 
 | Domain | Control |
 |---|---|
-| `light` | toggle; when on, brightness, white warmth and colour, as far as the bulb supports them |
+| `light` | toggle; when on, brightness, white warmth and color, as far as the bulb supports them |
 | `switch` with a `dimmer` | toggle; while on, the same light controls for the bulb behind it |
 | `switch`, `input_boolean`, `remote`, `humidifier` | toggle |
 | `fan` | toggle; Off/Low/Med/High when speeds are supported |
