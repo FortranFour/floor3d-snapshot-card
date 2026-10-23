@@ -36,7 +36,7 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 2. **Rooms** — *Detect rooms from the model* (run it again any time: it adds newly detected entities to your rooms and keeps your edits, and entities you removed stay out until you press *Restore*) finds the floor objects (`room_N_1`, as Sweet Home 3D exports them), names each room from the floor3d entity bound to that floor (e.g. `input_button.floor3d_kitchen` → *Kitchen*), and assigns the floor3d card's entities to the room they stand in. Tick *Also add sensors* first if you want temperatures, doors and windows too. Then rename rooms, change icons, add or remove entities, set labels, reorder. Rooms without a floor object (a porch, or a group like *Outdoor Lighting*) show as a pin on an anchor object; the editor suggests anchors from the floor3d objects bound to the room's entities. A room with neither appears as a button under the map.
 3. **Snapshot** — pick a style, set the view (open *Show 3D preview* and drag, or use the Turn / Tilt / Roll sliders), then *Render snapshot*. Rendering runs in your browser (a few seconds to ~20 s for a large house) and the two images are saved in Home Assistant's image store. If you later change rooms, models or the view, the editor marks the snapshot *Out of date*.
 4. **Sunlight** — optional; see below.
-5. **Display** — title, starting room, layout, guest-mode limits.
+5. **Display** — title, starting room, layout, guest-mode limits, and optionally the indoor temperature, the weather and the date and time beside the title. On a phone they wrap onto their own row under the title.
 
 > Rendering needs WebGL in the browser you edit from (any desktop browser). Guests never need it.
 
@@ -155,6 +155,9 @@ rooms:
 default_room: kitchen
 layout: auto               # auto | side | stacked
 room_list: ""              # "" (rooms the map can't show) | always | never
+indoor_entity: sensor.hall_temperature   # or a climate entity (its current temperature)
+weather_entity: weather.home
+clock: true                # date and time beside the title
 sun:
   enabled: true
   north: 30                # degrees clockwise from the plan's top

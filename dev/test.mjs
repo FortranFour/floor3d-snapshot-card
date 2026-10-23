@@ -277,6 +277,22 @@ await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()
   check(stored === true && !inGuest && refused && notGuest, "an entity hidden in guest mode: no tile and no control while guest mode is on, shown when off", JSON.stringify({ stored, inGuest, refused, notGuest }));
   await page.evaluate((t) => { const c = structuredClone(window.harness.getConfig()); delete c.guest_mode; delete c.rooms[t.i].entities[0].guest_hidden; window.harness.setConfig(c); }, t);
 }
+// 12d. header status: indoor temperature, weather, date and time
+{
+  await page.evaluate(() => { const h = window.harness.hass; h.states = { ...h.states, "weather.home": { entity_id: "weather.home", state: "clear-night", attributes: { friendly_name: "Home", temperature: 63.4, temperature_unit: "°F" } }, "sensor.hall_temperature": { entity_id: "sensor.hall_temperature", state: "72.2", attributes: { friendly_name: "Hall temperature", unit_of_measurement: "°F", device_class: "temperature" } } }; window.harness.push(); });
+  await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); Object.assign(c, { title: "Ellentown", weather_entity: "weather.home", indoor_entity: "sensor.hall_temperature", clock: true }); window.harness.setConfig(c); });
+  await page.waitForTimeout(300);
+  const st = await page.evaluate(() => { const s = window.harness.card.shadowRoot; return { chips: [...s.querySelectorAll(".schip span")].map((x) => x.textContent), when: s.querySelector(".when")?.textContent || "" }; });
+  check(st.chips[0] === "Inside 72°F" && st.chips[1] === "Clear · 63°F" && /\d:\d\d/.test(st.when), "header shows indoor temperature, weather, date and time", JSON.stringify(st));
+  const more = await page.evaluate(() => new Promise((res) => { const c = window.harness.card; c.addEventListener("hass-more-info", (e) => res(e.detail.entityId), { once: true }); c.shadowRoot.querySelector('.schip[data-entity="weather.home"]').click(); setTimeout(() => res(null), 500); }));
+  check(more === "weather.home", "tapping the weather opens its details", String(more));
+  await page.locator("#card").screenshot({ path: `${shots}/header-desktop.png`, clip: undefined });
+  await page.setViewportSize({ width: 390, height: 900 }); await page.waitForTimeout(400);
+  const narrow = await page.evaluate(() => window.harness.card.classList.contains("narrow"));
+  await page.locator("#card").screenshot({ path: `${shots}/header-phone.png` });
+  await page.setViewportSize({ width: 1500, height: 1000 }); await page.waitForTimeout(300);
+  check(narrow, "on a phone-width card the status wraps under the title");
+}
 // 13. detecting again: missing entities come back, ones removed with ✕ stay out until restored
 {
   const r0 = await page.evaluate(() => { const c = window.harness.getConfig(); const i = c.rooms.findIndex((r) => (r.entities || []).length >= 2 && r.floors?.length); return { i, a: c.rooms[i].entities[0].entity, b: c.rooms[i].entities[1].entity, id: c.rooms[i].id }; });

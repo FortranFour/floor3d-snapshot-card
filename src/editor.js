@@ -268,7 +268,15 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
 
   _displaySection() {
     const c = this._config;
+    const st = this._hass?.states || {};
+    const weathers = Object.keys(st).filter((id) => id.startsWith("weather.")).sort();
+    const temps = Object.keys(st).filter((id) => id.startsWith("climate.") || (id.startsWith("sensor.") && st[id].attributes?.device_class === "temperature")).sort();
     return `<div class="row"><label>Title<input type="text" data-field="title" value="${esc(c.title || "")}" data-key="dt"></label><label>Subtitle<input type="text" data-field="subtitle" value="${esc(c.subtitle ?? "")}" placeholder="Tap a room on the map to see its controls." data-key="ds"></label></div>
+<label>Above the map, beside the title</label>
+<div class="row"><label>Indoor temperature<input type="text" list="f3s-temps" data-field="indoor_entity" value="${esc(c.indoor_entity || "")}" placeholder="${esc(temps[0] || "sensor.… or climate.…")}" data-key="die"></label><label>Weather<input type="text" list="f3s-weather" data-field="weather_entity" value="${esc(c.weather_entity || "")}" placeholder="${esc(weathers[0] || "weather.…")}" data-key="dwe"></label></div>
+<label class="check"><input type="checkbox" data-field="clock" data-bool ${c.clock ? "checked" : ""} data-key="dck">Date and time</label>
+<datalist id="f3s-weather">${weathers.map((id) => `<option value="${esc(id)}">${esc(this._hass.states[id].attributes.friendly_name || "")}</option>`).join("")}</datalist>
+<datalist id="f3s-temps">${temps.map((id) => `<option value="${esc(id)}">${esc(this._hass.states[id].attributes.friendly_name || "")}</option>`).join("")}</datalist>
 <div class="row"><label>Start with room<select data-field="default_room" data-key="dr"><option value="">First room</option>${c.rooms.map((r) => `<option value="${esc(r.id)}" ${c.default_room === r.id ? "selected" : ""}>${esc(r.name || r.id)}</option>`).join("")}</select></label><label>Layout<select data-field="layout" data-key="dl">${[["", "Automatic"], ["side", "Map beside controls"], ["stacked", "Map above controls"]].map(([v, t]) => `<option value="${v}" ${(c.layout || "") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label></div>
 <div class="row"><label>Room buttons under the map<select data-field="room_list" data-key="dl2">${[["", "Rooms the map can't show"], ["always", "All rooms"], ["never", "Never"]].map(([v, t]) => `<option value="${v}" ${(c.room_list || "") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label></div>
 <label>Light controls on each tile (when the light supports them)</label>
@@ -315,6 +323,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     if (path === "view.style" && value === "standard") value = "";
     if (path === "view.wall_transparency" && value === 0) value = undefined;
     if (/\.guest_hidden$/.test(path) && value === false) value = undefined;
+    if (path === "clock" && value === false) value = undefined;
     const keys = path.split("."), last = keys.pop();
     let o = this._config;
     keys.forEach((k, n) => { const next = keys[n + 1] ?? last; o[k] ??= /^\d+$/.test(next) ? [] : {}; o = o[k]; });

@@ -19,6 +19,8 @@ const icon = (name) => `<ha-icon icon="${esc(name)}" aria-hidden="true"></ha-ico
 const ACTIVE_DOMAINS = new Set(["light", "switch", "fan", "input_boolean", "media_player"]);
 const DEFAULT_ICONS = { light: "mdi:lightbulb-outline", switch: "mdi:toggle-switch-outline", fan: "mdi:fan", cover: "mdi:window-shutter", climate: "mdi:thermostat", media_player: "mdi:television", lock: "mdi:lock-outline", scene: "mdi:palette-outline", script: "mdi:script-text-outline", sensor: "mdi:eye-outline", binary_sensor: "mdi:checkbox-blank-circle-outline", input_boolean: "mdi:toggle-switch-outline", button: "mdi:gesture-tap-button", input_button: "mdi:gesture-tap-button", alarm_control_panel: "mdi:shield-home-outline", vacuum: "mdi:robot-vacuum" };
 const SENSITIVE_COVERS = new Set(["garage", "gate", "door"]);
+// weather states → [label, icon]
+const WEATHER = { "clear-night": ["Clear", "mdi:weather-night"], cloudy: ["Cloudy", "mdi:weather-cloudy"], exceptional: ["Unusual", "mdi:alert-circle-outline"], fog: ["Fog", "mdi:weather-fog"], hail: ["Hail", "mdi:weather-hail"], lightning: ["Lightning", "mdi:weather-lightning"], "lightning-rainy": ["Storms", "mdi:weather-lightning-rainy"], partlycloudy: ["Partly cloudy", "mdi:weather-partly-cloudy"], pouring: ["Heavy rain", "mdi:weather-pouring"], rainy: ["Rain", "mdi:weather-rainy"], snowy: ["Snow", "mdi:weather-snowy"], "snowy-rainy": ["Sleet", "mdi:weather-snowy-rainy"], sunny: ["Sunny", "mdi:weather-sunny"], windy: ["Windy", "mdi:weather-windy"], "windy-variant": ["Windy", "mdi:weather-windy-variant"] };
 const COLOR_MODES = ["hs", "xy", "rgb", "rgbw", "rgbww"];
 // color wheel: white in the middle, eight pastel hues clockwise from red at the top.
 // [label, hue, saturation sent to the bulb]; the swatch shows the same hue as a pastel.
@@ -32,7 +34,8 @@ const STYLE = `
 :host{display:block;--f3s-blue:rgb(var(--rgb-primary-color,3,169,244));--f3s-ink:var(--primary-text-color,#233246);--f3s-muted:var(--secondary-text-color,#677587);--f3s-surface:var(--ha-card-background,var(--card-background-color,#fff));--f3s-line:rgba(var(--rgb-primary-text-color,33,33,33),.1);--f3s-amber:#dfac2a}
 *{box-sizing:border-box}button,input{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation}button:disabled{cursor:default;opacity:.45}button:focus-visible,input:focus-visible{outline:3px solid var(--f3s-blue);outline-offset:3px}ha-icon{width:22px;height:22px;flex:none;color:inherit}
 ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
-.head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 2px 8px}.head h2{margin:0;font-size:20px;font-weight:500;letter-spacing:-.3px}.head p{margin:2px 0 0;color:var(--f3s-muted);font-size:13px}
+.head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px 16px;margin:0 2px 10px}.head .titles{flex:1 1 220px;min-width:0}.status{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 1 auto;min-width:0}.when{color:var(--f3s-muted);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}.schips{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}.schip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 11px 4px 9px;border:1px solid var(--f3s-line);border-radius:16px;background:var(--f3s-surface);color:var(--f3s-ink);font-size:13px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.04)}.schip ha-icon{width:18px;height:18px;color:var(--f3s-blue)}.schip[aria-disabled=true]{cursor:default}
+:host(.narrow) .status{flex:1 1 100%;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}:host(.narrow) .schips{justify-content:flex-start}:host(.narrow) .when{flex:1 1 100%}.head h2{margin:0;font-size:20px;font-weight:500;letter-spacing:-.3px}.head p{margin:2px 0 0;color:var(--f3s-muted);font-size:13px}
 .layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:16px;align-items:start}:host(.stacked) .layout{grid-template-columns:minmax(0,1fr)}.layout>*{min-width:0}
 .map{position:relative;width:min(100%,calc((100vh - 260px) * var(--aspect,1.2)));min-width:min(100%,280px);margin:0 auto;aspect-ratio:var(--aspect,1.2);-webkit-user-select:none;user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:default}.map.hovering{cursor:pointer}
 .map{isolation:isolate}.map img,.map canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}.map img,.map canvas.sun{-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}.map canvas.sun{mix-blend-mode:multiply;opacity:0;transition:opacity 2.4s ease}.map canvas.sun.show{opacity:1}.map.preview canvas.sun{transition-duration:.2s}
@@ -97,7 +100,8 @@ export class Floor3dSnapshotCard extends HTMLElement {
     this.classList.toggle("dark", !!hass?.themes?.darkMode);
     const theme = `${hass?.themes?.theme}|${hass?.themes?.darkMode}`;
     if (theme !== this._theme) { this._theme = theme; this._primary = ""; this._tintKey = ""; }
-    if (!old || [...this._entities].some((id) => old.states[id] !== hass.states[id])) this._request();
+    const watch = [this._config?.weather_entity, this._config?.indoor_entity].filter(Boolean);
+    if (!old || [...this._entities, ...watch].some((id) => old.states[id] !== hass.states[id])) this._request();
     if (!old) this._updateSun();
   }
   get hass() { return this._hass; }
@@ -126,7 +130,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     this._updateSun();
   }
   disconnectedCallback() {
-    this._ro?.disconnect(); clearTimeout(this._pt); clearTimeout(this._toastTimer); clearTimeout(this._sunTimer); this._pointer = false;
+    this._ro?.disconnect(); clearTimeout(this._pt); clearTimeout(this._toastTimer); clearTimeout(this._sunTimer); clearTimeout(this._clockTimer); this._clockTimer = null; this._pointer = false;
     window.removeEventListener(SUN_PREVIEW_EVENT, this._onPreview); window.removeEventListener(EDIT_ROOM_EVENT, this._onEditRoom); document.removeEventListener("visibilitychange", this._onVisible);
   }
 
@@ -135,6 +139,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (!w) return;
     const mode = this._config?.layout;
     this.classList.toggle("stacked", mode === "stacked" || (mode !== "side" && w < 760));
+    this.classList.toggle("narrow", w < 560);
   }
   _request() {
     if (this._queued || !this.isConnected) return;
@@ -193,9 +198,51 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (this._scrollPanel) { this._scrollPanel = false; this._card.querySelector(".panel")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
   }
   _header() {
-    const c = this._config;
-    if (!c.title && !c.subtitle) return "";
-    return `<div class="head"><div>${c.title ? `<h2>${esc(c.title)}</h2>` : ""}${c.subtitle !== "" ? `<p>${esc(c.subtitle ?? (this._snap() ? "Tap a room on the map to see its controls." : ""))}</p>` : ""}</div></div>`;
+    const c = this._config, status = this._status();
+    if (!c.title && !c.subtitle && !status) return "";
+    return `<div class="head"><div class="titles">${c.title ? `<h2>${esc(c.title)}</h2>` : ""}${c.subtitle !== "" ? `<p>${esc(c.subtitle ?? (this._snap() ? "Tap a room on the map to see its controls." : ""))}</p>` : ""}</div>${status}</div>`;
+  }
+
+  // ---- header status: indoor temperature, weather, date and time --------------
+  _status() {
+    const c = this._config, parts = [];
+    const fmtT = (v, unit) => (num(v) ? `${Math.round(Number(v))}${unit || "°"}` : null);
+    const tUnit = String(this._hass?.config?.unit_system?.temperature || "°");
+    if (c.indoor_entity) {
+      const s = this._s(c.indoor_entity), a = s?.attributes || {};
+      const v = domainOf(c.indoor_entity) === "climate" ? fmtT(a.current_temperature, a.temperature_unit || tUnit) : available(s) ? fmtT(s.state, a.unit_of_measurement || tUnit) : null;
+      if (v) parts.push(this._statusChip(c.indoor_entity, "mdi:home-thermometer-outline", `Inside ${v}`));
+    }
+    if (c.weather_entity) {
+      const s = this._s(c.weather_entity), a = s?.attributes || {};
+      if (available(s)) {
+        const [label, ic] = WEATHER[s.state] || [titleCase(String(s.state).replace(/[-_]/g, " ")), "mdi:weather-partly-cloudy"];
+        const t = fmtT(a.temperature, a.temperature_unit || tUnit);
+        parts.push(this._statusChip(c.weather_entity, ic, t ? `${label} · ${t}` : label));
+      }
+    }
+    const clock = c.clock ? `<span class="when" aria-live="off">${esc(this._when())}</span>` : "";
+    if (c.clock) this._tick();
+    return parts.length || clock ? `<div class="status">${clock}${parts.length ? `<div class="schips">${parts.join("")}</div>` : ""}</div>` : "";
+  }
+  _statusChip(entity, ic, text) {
+    // read-only information: a tap opens Home Assistant's details, except a thermostat in guest mode
+    const open = !(this._config.guest_mode !== false && domainOf(entity) === "climate");
+    return `<button class="schip" ${open ? `data-action="more-info" data-entity="${esc(entity)}"` : 'tabindex="-1" aria-disabled="true"'} data-focus="s-${esc(entity)}">${icon(ic)}<span>${esc(text)}</span></button>`;
+  }
+  _when(d = new Date()) {
+    const date = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    return `${date} · ${time}`;
+  }
+  _tick() {
+    if (this._clockTimer || !this.isConnected) return;
+    const next = 60000 - (Date.now() % 60000) + 50;
+    this._clockTimer = setTimeout(() => {
+      this._clockTimer = null;
+      const el = this.shadowRoot.querySelector(".when"); if (el) el.textContent = this._when();
+      if (this._config?.clock) this._tick();
+    }, next);
   }
 
   _panel(room) {
@@ -488,6 +535,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const b = ev.target.closest("button[data-action]"); if (!b || b.disabled) return;
     const { action, entity: id, room } = b.dataset, s = this._s(id), d = domainOf(id), g = this._config.guest_mode !== false;
     if (action === "room") { if (this._room_(room)) this._select(room); return; }
+    if (action === "more-info") { this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: b.dataset.entity }, bubbles: true, composed: true })); return; }
     if (action === "labels") { this._labels = !this._labels; try { localStorage.setItem("floor3d-snapshot-labels", this._labels ? "1" : "0"); } catch { /* private */ } this._request(); return; }
     if (action === "room-off") {
       for (const e of this._ents(this._room_())) if (["light", "switch", "input_boolean", "fan"].includes(domainOf(e.entity)) && !e.read_only && isOn(this._s(e.entity))) this._call(e.entity, domainOf(e.entity), "turn_off");

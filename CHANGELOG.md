@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 — 2026-10-23
+
+- **Header status.** Optional indoor temperature (`indoor_entity`: a temperature sensor, or a climate entity's current temperature), weather (`weather_entity`: condition and temperature, with a matching icon) and date and time (`clock: true`, updated on the minute), in chips beside the title. On a narrow card (below 560 px, e.g. a phone), they wrap onto their own row under the title. Tapping a chip opens Home Assistant's details, except a thermostat in guest mode. Set in *Display*, with suggestions of your weather and temperature entities.
+
 ## 0.9.0 — 2026-10-23
 
 - **Hide in guest mode, per entity.** Each entity in a room has a *Hide in guest mode* checkbox (`guest_hidden: true`). While guest mode is on, that entity has no tile, doesn't count towards the room's lights-on badge or glow, is skipped by *All off in this room*, and the card refuses to control it. With guest mode off, it shows as usual. The card-wide guest-mode limits (locks, garage doors and gates, alarms, volume, color) are unchanged.
