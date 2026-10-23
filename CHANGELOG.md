@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2 — 2026-10-23
+
+- *Detect rooms again* now merges: rooms you have edited keep their entities, labels, order and dimmers, and detected entities missing from them are added at the end, with dimmers from the floor3d card. Before, an edited room was left exactly as it was, so an entity removed by mistake never came back.
+- Entities removed with ✕ are remembered (`removed` on the room) and left out when detecting again. *Restore* in the room brings them back, and adding one by hand clears it from the list.
+- *Detect rooms* looks up the floor3d cards itself when the editor hasn't yet, so rooms are filled without running *Find floor3d cards* first.
+
 ## 0.8.1 — 2026-10-23
 
 - Fix: a switch's dimmer controls appeared only while the bulb itself reported *on* with a brightness. A smart bulb behind a wall switch may report *off* while the switch is on, which left the tile with no slider and no explanation. The controls now show whenever the bulb is available (setting them turns it on), and the tile's state line names the bulb's condition: `On · 80%`, `On · bulb off`, `On · bulb unavailable` or `On · bulb not found`.

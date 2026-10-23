@@ -243,6 +243,23 @@ await page.evaluate((sw) => { const c = structuredClone(window.harness.getConfig
 await page.waitForTimeout(250); k = await ctl();
 check(k?.brightness && !k.warmth && k.swatches === 0, "a tile's own controls override the card's switches", JSON.stringify(k));
 await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); delete c.color_swatches; window.harness.setConfig(c); });
+// 13. detecting again: missing entities come back, ones removed with ✕ stay out until restored
+{
+  const r0 = await page.evaluate(() => { const c = window.harness.getConfig(); const i = c.rooms.findIndex((r) => (r.entities || []).length >= 2 && r.floors?.length); return { i, a: c.rooms[i].entities[0].entity, b: c.rooms[i].entities[1].entity, id: c.rooms[i].id }; });
+  // b vanishes from the config (an older config, or edited in YAML): detection should add it back
+  await page.evaluate((r0) => { const c = structuredClone(window.harness.getConfig()); c.rooms[r0.i].entities = c.rooms[r0.i].entities.filter((e) => e.entity !== r0.b); window.harness.setConfig(c); }, r0);
+  // a is removed with the ✕ button: detection should leave it out
+  await page.evaluate((r0) => { const ed = window.harness.editor; ed._roomOpen.add(r0.id); ed._open.rooms = true; ed._render(); }, r0);
+  await page.evaluate((r0) => { const b = [...window.harness.editor.shadowRoot.querySelectorAll('[data-act="ent-remove"]')].find((x) => Number(x.dataset.i) === r0.i && Number(x.dataset.j) === 0); b.click(); }, r0);
+  await clickEd('[data-act="detect"]');
+  await waitEd(() => !window.harness.editor._busy, 600000);
+  const after = await page.evaluate((r0) => { const r = window.harness.getConfig().rooms.find((x) => x.id === r0.id); return { has: (r.entities || []).map((e) => e.entity), removed: r.removed || [] }; }, r0);
+  check(after.has.includes(r0.b) && !after.has.includes(r0.a) && after.removed.includes(r0.a), "detecting again adds missing entities but not ones removed with ✕", JSON.stringify({ a: r0.a, b: r0.b, ...after }));
+  await page.evaluate((r0) => { window.harness.editor._roomOpen.add(r0.id); window.harness.editor._render(); }, r0);
+  await page.evaluate((r0) => window.harness.editor.shadowRoot.querySelector(`[data-act="restore-removed"][data-i="${r0.i}"]`).click(), r0);
+  const restored = await page.evaluate((r0) => { const r = window.harness.getConfig().rooms.find((x) => x.id === r0.id); return { has: r.entities.map((e) => e.entity).includes(r0.a), removed: r.removed }; }, r0);
+  check(restored.has && !restored.removed, "Restore brings removed entities back", JSON.stringify(restored));
+}
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);

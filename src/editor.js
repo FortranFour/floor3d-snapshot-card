@@ -123,7 +123,7 @@ ${c.rooms.map((r, i) => this._roomEditor(r, i)).join("")}`;
 <label>Floor objects (tap target and tint)</label><div class="chips">${(r.floors || []).map((f, j) => `<span class="chip">${esc(objRef(f))}<button data-act="floor-remove" data-i="${i}" data-j="${j}" title="Remove">✕</button></span>`).join("") || '<span class="note">None — the room shows as a pin only.</span>'}</div>
 <div class="row"><label>Add floor object<input type="text" list="f3s-objects" placeholder="room_3_1" data-key="rf${i}" id="floor-${i}"></label>${multi ? `<label style="max-width:110px">Model<select id="floor-model-${i}">${this._config.models.map((_, m) => `<option value="${m}">${m + 1}</option>`).join("")}</select></label>` : ""}<button data-act="floor-add" data-i="${i}">Add</button></div>
 ${(r.floors || []).length ? "" : this._anchorEditor(r, i, multi)}
-<label>Entities</label>
+<label>Entities</label>${r.removed?.length ? `<p class="note">Removed, and left out when detecting again: ${r.removed.map((x) => esc(x)).join(", ")} <button class="icon" data-act="restore-removed" data-i="${i}">Restore</button></p>` : ""}
 ${ents.map((e, j) => `<div class="ent"><label>Entity<input type="text" list="f3s-entities" data-field="rooms.${i}.entities.${j}.entity" value="${esc(e.entity)}" data-key="re${i}-${j}"></label><label>Label<input type="text" data-field="rooms.${i}.entities.${j}.name" value="${esc(e.name || "")}" placeholder="${esc(this._hass?.states[e.entity]?.attributes?.friendly_name || "")}" data-key="rl${i}-${j}"></label><div class="tools"><button class="icon" data-act="ent-up" data-i="${i}" data-j="${j}" ${j ? "" : "disabled"} title="Move up">↑</button><button class="icon" data-act="ent-remove" data-i="${i}" data-j="${j}" title="Remove">✕</button></div></div>${e.dimmer || /^light\./.test(e.entity || "") ? `<div class="ent dim"><label>Light controls on this tile<select data-field="rooms.${i}.entities.${j}.controls" data-controls data-key="rc${i}-${j}">${CONTROL_SETS.map(([v, t]) => `<option value="${v}" ${(Array.isArray(e.controls) ? e.controls.join(",") : "") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label></div>` : ""}${e.dimmer || /^(switch|input_boolean)\./.test(e.entity || "") ? `<div class="ent dim"><label>Dimmer — the light behind this switch, for brightness<input type="text" list="f3s-entities" data-field="rooms.${i}.entities.${j}.dimmer" value="${esc(e.dimmer || "")}" placeholder="light.… (optional)" data-key="rd${i}-${j}"></label></div>` : ""}${this._hass && e.entity && !this._hass.states[e.entity] ? `<p class="note warn">${esc(e.entity)} doesn't exist.</p>` : ""}${this._hass && e.dimmer && !this._hass.states[e.dimmer] ? `<p class="note warn">${esc(e.dimmer)} doesn't exist.</p>` : ""}`).join("")}
 <div class="row"><label>Add entity<input type="text" list="f3s-entities" placeholder="light.kitchen" data-key="ra-${i}" id="ent-${i}"></label><button data-act="ent-add" data-i="${i}">Add</button></div>
 <div class="row"><button class="icon" data-act="room-up" data-i="${i}" ${i ? "" : "disabled"}>↑ Move up</button><button class="icon" data-act="room-down" data-i="${i}" ${i < n - 1 ? "" : "disabled"}>↓ Move down</button><button class="icon" data-act="room-remove" data-i="${i}">Delete room</button></div>
@@ -287,9 +287,22 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
     if (act === "floor-remove") { rooms[i].floors.splice(j, 1); return this._emit(); }
     if (act === "ent-add") {
       const id = this.shadowRoot.getElementById(`ent-${i}`).value.trim(); if (!id) return;
-      (rooms[i].entities ||= []).push({ entity: id }); return this._emit();
+      (rooms[i].entities ||= []).push({ entity: id });
+      if (rooms[i].removed) { rooms[i].removed = rooms[i].removed.filter((x) => x !== id); if (!rooms[i].removed.length) delete rooms[i].removed; }
+      return this._emit();
     }
-    if (act === "ent-remove") { rooms[i].entities.splice(j, 1); return this._emit(); }
+    if (act === "ent-remove") {
+      // remembered, so detecting rooms again doesn't put it back
+      const [gone] = rooms[i].entities.splice(j, 1);
+      if (gone?.entity && !(rooms[i].removed ||= []).includes(gone.entity)) rooms[i].removed.push(gone.entity);
+      return this._emit();
+    }
+    if (act === "restore-removed") {
+      const dim = dimmersOf(Object.values(this._floor3d));
+      for (const id of rooms[i].removed || []) if (!(rooms[i].entities ||= []).some((e) => e.entity === id)) rooms[i].entities.push({ entity: id, ...(dim.has(id) ? { dimmer: dim.get(id) } : {}) });
+      delete rooms[i].removed;
+      return this._emit();
+    }
     if (act === "ent-up" && j) { const e = rooms[i].entities; [e[j - 1], e[j]] = [e[j], e[j - 1]]; return this._emit(); }
     if (act === "anchor-pick") { rooms[i].anchor = { model: Number(d.model) || 0, object: d.obj }; return this._emit(); }
     if (act === "preview") return this._previewOpen ? this._closePreview(true) : this._openPreview();
@@ -442,6 +455,8 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
   async _detect() {
     this._busy = "detect"; this._msg = {}; this._render();
     try {
+      // the floor3d card's entities are needed to fill rooms: look them up if this editor hasn't yet
+      if (this._config.models.some((m) => !this._floor3d[m.url])) { this._busy = null; await this._scan(true); this._busy = "detect"; this._render(); }
       const session = await this._engine();
       const floor3d = this._config.models.map((m) => this._floor3d[m.url] || { entities: [], groups: {} });
       const name = (id) => this._hass?.states?.[id]?.attributes?.friendly_name || String(id).split(".")[1]?.replace(/_/g, " ") || id;
@@ -451,15 +466,25 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       if (!proposed.length) { this._msg = { rooms: ["warn", "No room_N_1 floor objects found. Add rooms by hand and pick their floor objects."] }; return; }
       const existing = new Map(this._config.rooms.map((r) => [JSON.stringify(r.floors), r]));
       const taken = new Set();
+      let added = 0;
       this._config.rooms = proposed.map((p) => {
         const keep = existing.get(JSON.stringify(p.floors));     // keep the host's edits for known floors
-        const room = keep ? { ...keep, entities: keep.entities?.length ? keep.entities : p.entities } : p;
+        let room = p;
+        if (keep) {
+          // the host's entities stay as edited (order, labels, dimmers); detected ones not yet in the
+          // room are added after them, except those the host removed
+          const have = new Set((keep.entities || []).map((e) => e.entity)), removed = new Set(keep.removed || []);
+          const fresh = p.entities.filter((e) => !have.has(e.entity) && !removed.has(e.entity));
+          added += fresh.length;
+          room = { ...keep, entities: [...(keep.entities || []).map((e) => (!e.dimmer && dim.has(e.entity) ? { ...e, dimmer: dim.get(e.entity) } : e)), ...fresh] };
+        }
         room.id = slug(room.id || room.name, taken); taken.add(room.id);
         return room;
       }).concat(this._config.rooms.filter((r) => !r.floors?.length));   // pin-only rooms stay
       const ents = this._config.rooms.reduce((n, r) => n + (r.entities?.length || 0), 0);
       const hadFloor3d = floor3d.some((f) => f.entities.length);
-      this._msg = { rooms: ["", `Found ${proposed.length} rooms${hadFloor3d ? ` and placed ${ents} floor3d entities in them` : ". Use “Find floor3d cards” first to fill rooms with the card's entities automatically"}.`] };
+      const skipped = this._config.rooms.reduce((n, r) => n + (r.removed?.length || 0), 0);
+      this._msg = { rooms: ["", `Found ${proposed.length} rooms${hadFloor3d ? ` and placed ${ents} floor3d entities in them${added ? ` (${added} newly added to rooms you had edited)` : ""}` : ". No floor3d card was found for these models, so rooms are empty: add entities by hand"}.${skipped ? ` ${skipped} entit${skipped === 1 ? "y" : "ies"} you removed stay${skipped === 1 ? "s" : ""} out.` : ""}`] };
       this._open.rooms = true;
     } catch (err) {
       this._msg = { rooms: ["err", `Couldn't load the model: ${err.message || err}`] };
