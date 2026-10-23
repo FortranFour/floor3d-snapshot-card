@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 — 2026-10-23
+
+- Fix: a switch's dimmer controls appeared only while the bulb itself reported *on* with a brightness. A smart bulb behind a wall switch may report *off* while the switch is on, which left the tile with no slider and no explanation. The controls now show whenever the bulb is available (setting them turns it on), and the tile's state line names the bulb's condition: `On · 80%`, `On · bulb off`, `On · bulb unavailable` or `On · bulb not found`.
+
 ## 0.8.0 — 2026-10-23
 
 - **White warmth and color.** A light that is on (or the dimmer behind a switch) can show a warmth slider (`color_temp_kelvin`, within the bulb's range) and a color wheel of pastel swatches, white in the middle and eight hues around it (`hs_color` at a soft saturation, the current color ringed), each only when the bulb supports it. With more than one control, each gets a small label.

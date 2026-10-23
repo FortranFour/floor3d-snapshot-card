@@ -212,6 +212,13 @@ await page.evaluate((sw) => { const r = window.harness.card.shadowRoot.querySele
 await page.waitForTimeout(200);
 const dimCall = await page.evaluate(() => window.harness.calls.at(-1));
 check(dimCall?.domain === "light" && dimCall.data.entity_id === sw.dimmer && dimCall.data.brightness_pct === 40 && (await page.evaluate(() => window.harness.calls.length)) === nCalls + 1, "the slider sets the bulb's brightness", JSON.stringify(dimCall));
+// 11b. a switched bulb that reports off still gets its controls; an unavailable one is named
+for (const [bulb, expectSlider, expectText] of [["off", true, /bulb off/], ["unavailable", false, /bulb unavailable/]]) {
+  await page.evaluate(([sw, st]) => { const h = window.harness.hass; h.states = { ...h.states, [sw.dimmer]: { entity_id: sw.dimmer, state: st, attributes: { friendly_name: "Bulb", supported_color_modes: ["brightness"] } } }; window.harness.push(); }, [sw, bulb]);
+  await page.waitForTimeout(250);
+  const t = await page.evaluate((sw) => { const tile = [...window.harness.card.shadowRoot.querySelectorAll(".tile")].find((x) => x.querySelector(`[data-entity="${sw.entity}"]`)); return { slider: !!tile.querySelector('[data-action="brightness"]'), text: tile.querySelector(".tstate").textContent }; }, sw);
+  check(t.slider === expectSlider && expectText.test(t.text), `switch on, bulb ${bulb}: ${expectSlider ? "slider shown" : "no slider"}, state says so`, JSON.stringify(t));
+}
 // 12. warmth slider and color swatches; card-wide switches; per-tile override
 await page.evaluate((sw) => { const h = window.harness.hass; h.states = { ...h.states, [sw.dimmer]: { entity_id: sw.dimmer, state: "on", attributes: { friendly_name: "Bulb", brightness: 204, supported_color_modes: ["color_temp", "hs"], color_mode: "hs", hs_color: [225, 100], color_temp_kelvin: null, min_color_temp_kelvin: 2200, max_color_temp_kelvin: 6500 } } }; window.harness.push(); }, sw);
 await page.waitForTimeout(250);

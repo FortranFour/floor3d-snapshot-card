@@ -193,15 +193,19 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const dis = !available(s) || busy ? "disabled" : "";
     // a dimmer is the light behind a switch: the switch powers it, the light sets the brightness
     const dimId = e.dimmer || (d === "light" ? id : null), ds = dimId ? this._s(dimId) : null, da = ds?.attributes || {};
-    const dimmable = !!ds && isOn(ds) && (num(da.brightness) || (da.supported_color_modes || []).some((m) => m !== "onoff"));
-    const pct = dimmable ? (num(da.brightness) ? Math.max(1, Math.round(da.brightness / 2.55)) : 100) : null;
-    const stateText = !s ? "Not found" : !available(s) ? "Unavailable" : busy || this._busy.has(dimId) ? "Changing…" : e.dimmer && isOn(s) && pct ? `On · ${pct}%` : this._stateText(s);
+    // A switched bulb may report off, or briefly unavailable, while its switch is on: its controls
+    // still show (setting them turns the bulb on); an unavailable bulb is named in the state line.
+    const dimReady = !!ds && (e.dimmer ? available(ds) : isOn(ds));
+    const dimmable = dimReady && (num(da.brightness) || (da.supported_color_modes || []).some((m) => m !== "onoff"));
+    const pct = dimmable ? (num(da.brightness) && isOn(ds) ? Math.max(1, Math.round(da.brightness / 2.55)) : 100) : null;
+    const dimNote = e.dimmer && isOn(s) ? (!ds ? " · bulb not found" : !available(ds) ? " · bulb unavailable" : !isOn(ds) ? " · bulb off" : pct ? ` · ${pct}%` : "") : "";
+    const stateText = !s ? "Not found" : !available(s) ? "Unavailable" : busy || this._busy.has(dimId) ? "Changing…" : e.dimmer && isOn(s) ? `On${dimNote}` : this._stateText(s);
     const on = isOn(s);
     const ro = e.read_only || ["sensor", "binary_sensor", "weather", "alarm_control_panel", "person", "device_tracker"].includes(d) || (g && d === "alarm_control_panel");
     const head = (action, sw = true) => `<button class="row" ${action ? `data-action="${action}" data-entity="${esc(id)}" data-focus="t-${esc(id)}"` : "tabindex=-1"} ${action ? dis : ""}><span class="ticon">${ic}</span><span class="ttext"><span class="tname">${name}</span><span class="tstate">${esc(this._confirm?.entity === id ? this._confirm.text : stateText)}</span></span>${sw && action ? '<span class="sw" aria-hidden="true"></span>' : ""}</button>`;
     if (ro || !s) return `<div class="tile">${head(null, false)}</div>`;
     let extra = "";
-    if (on && ds && isOn(ds)) {
+    if (on && dimReady) {
       // which light controls this tile may show: the entity's own `controls`, else the card's switches
       const c = this._config, modes = da.supported_color_modes || [];
       const want = Array.isArray(e.controls) ? new Set(e.controls) : new Set([
