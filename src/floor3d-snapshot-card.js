@@ -18,6 +18,10 @@ const icon = (name) => `<ha-icon icon="${esc(name)}" aria-hidden="true"></ha-ico
 const ACTIVE_DOMAINS = new Set(["light", "switch", "fan", "input_boolean", "media_player"]);
 const DEFAULT_ICONS = { light: "mdi:lightbulb-outline", switch: "mdi:toggle-switch-outline", fan: "mdi:fan", cover: "mdi:window-shutter", climate: "mdi:thermostat", media_player: "mdi:television", lock: "mdi:lock-outline", scene: "mdi:palette-outline", script: "mdi:script-text-outline", sensor: "mdi:eye-outline", binary_sensor: "mdi:checkbox-blank-circle-outline", input_boolean: "mdi:toggle-switch-outline", button: "mdi:gesture-tap-button", input_button: "mdi:gesture-tap-button", alarm_control_panel: "mdi:shield-home-outline", vacuum: "mdi:robot-vacuum" };
 const SENSITIVE_COVERS = new Set(["garage", "gate", "door"]);
+const COLOR_MODES = ["hs", "xy", "rgb", "rgbw", "rgbww"];
+// colour presets: [label, hue, saturation]
+const SWATCHES = [["White", 0, 0], ["Red", 0, 100], ["Orange", 28, 100], ["Yellow", 50, 95], ["Green", 120, 90], ["Cyan", 185, 85], ["Blue", 225, 100], ["Purple", 275, 85], ["Pink", 320, 65]];
+const hsCss = (h, s) => `hsl(${h},${s}%,${100 - s / 2}%)`;
 const mixHex = (a, b, t) => { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)); const x = p(a), y = p(b); return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * t)).join(",")})`; };
 
 const STYLE = `
@@ -35,7 +39,7 @@ ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 8px;max-width:100%;scrollbar-width:thin}.chip{display:inline-flex;align-items:center;gap:6px;flex:none;min-height:38px;padding:4px 12px;border:1px solid var(--f3s-line);border-radius:12px;background:transparent;color:var(--f3s-ink);font-size:13px}.chip[aria-pressed=true]{border-color:rgba(var(--rgb-primary-color,3,169,244),.6);background:rgba(var(--rgb-primary-color,3,169,244),.08);color:var(--f3s-blue)}.chip ha-icon{width:18px;height:18px}
 .panel{border:1px solid var(--f3s-line);border-radius:16px;padding:16px;min-width:0}.roomhead{display:flex;gap:12px;align-items:center;margin-bottom:14px}.roomicon{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:rgba(var(--rgb-primary-color,3,169,244),.075);color:var(--f3s-blue)}.roomhead h3{margin:0 0 3px;font-size:20px;font-weight:500}.roomhead p{margin:0;color:var(--f3s-muted);font-size:13px}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:9px}.tile{border:1px solid var(--f3s-line);border-radius:14px;overflow:hidden;min-width:0}.tile.on{background:rgba(var(--rgb-primary-color,3,169,244),.06)}.row{display:flex;align-items:center;gap:10px;width:100%;min-height:68px;padding:12px;border:0;background:transparent;color:inherit;text-align:left}.ticon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:11px;background:rgba(var(--rgb-primary-text-color,33,33,33),.05);color:var(--f3s-muted)}.tile.on .ticon{color:#d7a329;background:rgba(255,193,7,.13)}.ttext{flex:1;min-width:0}.tname{display:block;font-size:14px;font-weight:500;line-height:1.3;overflow-wrap:anywhere}.tstate{display:block;color:var(--f3s-muted);font-size:12px;margin-top:3px}.sw{flex:none;width:28px;height:17px;border-radius:10px;background:rgba(var(--rgb-primary-text-color,33,33,33),.14);padding:3px}.sw:before{content:"";display:block;width:11px;height:11px;border-radius:50%;background:var(--f3s-surface)}.tile.on .sw{background:var(--f3s-blue)}.tile.on .sw:before{margin-left:11px}
-.extra{padding:0 12px 12px}.range{display:block;width:100%;height:30px;margin:0;accent-color:var(--f3s-blue);touch-action:pan-x}.seg{display:flex;gap:5px}.seg button{flex:1;min-height:38px;border:1px solid var(--f3s-line);border-radius:10px;background:transparent;color:var(--f3s-muted);font-size:12px}.seg button[aria-pressed=true]{color:var(--f3s-blue);border-color:rgba(var(--rgb-primary-color,3,169,244),.5);background:rgba(var(--rgb-primary-color,3,169,244),.07)}.temp{display:flex;align-items:center;gap:10px;justify-content:space-between}.temp .val{font-size:20px}.step{width:42px;height:40px;border:1px solid var(--f3s-line);border-radius:11px;background:rgba(var(--rgb-primary-color,3,169,244),.05);color:var(--f3s-blue);font-size:22px}
+.extra{padding:0 12px 12px}.ctl{margin-top:2px}.ctl-l{display:block;font-size:11px;color:var(--f3s-muted);margin:2px 0 -2px}.range.warmth{accent-color:#e9a65a}.swatches{display:flex;flex-wrap:wrap;gap:7px;padding:6px 0 2px}.swatch-b{width:26px;height:26px;border-radius:50%;border:1px solid var(--f3s-line);background:var(--sw);padding:0}.swatch-b[aria-pressed=true]{box-shadow:0 0 0 2px var(--f3s-surface),0 0 0 4px var(--f3s-blue)}.range{display:block;width:100%;height:30px;margin:0;accent-color:var(--f3s-blue);touch-action:pan-x}.seg{display:flex;gap:5px}.seg button{flex:1;min-height:38px;border:1px solid var(--f3s-line);border-radius:10px;background:transparent;color:var(--f3s-muted);font-size:12px}.seg button[aria-pressed=true]{color:var(--f3s-blue);border-color:rgba(var(--rgb-primary-color,3,169,244),.5);background:rgba(var(--rgb-primary-color,3,169,244),.07)}.temp{display:flex;align-items:center;gap:10px;justify-content:space-between}.temp .val{font-size:20px}.step{width:42px;height:40px;border:1px solid var(--f3s-line);border-radius:11px;background:rgba(var(--rgb-primary-color,3,169,244),.05);color:var(--f3s-blue);font-size:22px}
 .foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}.quiet{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:6px 12px;border:1px solid var(--f3s-line);border-radius:11px;background:transparent;color:var(--f3s-muted);font-size:12px}.quiet ha-icon{width:17px;height:17px}.hint{color:var(--f3s-muted);font-size:11px}
 .empty{padding:20px;text-align:center;color:var(--f3s-muted);font-size:14px;line-height:1.6;border:1px dashed var(--f3s-line);border-radius:14px}.toast{position:fixed;z-index:10;bottom:24px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);border:1px solid var(--f3s-line);border-radius:14px;background:var(--f3s-surface);padding:12px 16px;box-shadow:0 4px 18px rgba(0,0,0,.12);font-size:13px}
 @media(max-width:600px){.pin{height:26px;min-width:26px;padding:0 4px;transform:translate(-13px,-50%);font-size:11px}.pin ha-icon{width:16px;height:16px}.pin:before{inset:-9px}}
@@ -194,8 +198,27 @@ export class Floor3dSnapshotCard extends HTMLElement {
     const head = (action, sw = true) => `<button class="row" ${action ? `data-action="${action}" data-entity="${esc(id)}" data-focus="t-${esc(id)}"` : "tabindex=-1"} ${action ? dis : ""}><span class="ticon">${ic}</span><span class="ttext"><span class="tname">${name}</span><span class="tstate">${esc(this._confirm?.entity === id ? this._confirm.text : stateText)}</span></span>${sw && action ? '<span class="sw" aria-hidden="true"></span>' : ""}</button>`;
     if (ro || !s) return `<div class="tile">${head(null, false)}</div>`;
     let extra = "";
-    if (on && dimmable) {
-      extra = `<div class="extra"><input class="range" type="range" min="1" max="100" value="${pct}" data-action="brightness" data-entity="${esc(dimId)}" data-focus="b-${esc(id)}" aria-label="${name} brightness"></div>`;
+    if (on && ds && isOn(ds)) {
+      // which light controls this tile may show: the entity's own `controls`, else the card's switches
+      const c = this._config, modes = da.supported_color_modes || [];
+      const want = Array.isArray(e.controls) ? new Set(e.controls) : new Set([
+        ...(c.brightness_slider !== false ? ["brightness"] : []),
+        ...(c.white_slider !== false ? ["white"] : []),
+        ...((c.color_swatches ?? (c.guest_mode === false)) ? ["color"] : []),
+      ]);
+      const parts = [];
+      if (want.has("brightness") && dimmable) parts.push(["Brightness", `<input class="range" type="range" min="1" max="100" value="${pct}" data-action="brightness" data-entity="${esc(dimId)}" data-focus="b-${esc(id)}" aria-label="${name} brightness">`]);
+      if (want.has("white") && modes.includes("color_temp")) {
+        const lo = Number(da.min_color_temp_kelvin) || 2000, hi = Number(da.max_color_temp_kelvin) || 6500;
+        const k = num(da.color_temp_kelvin) ? Math.min(hi, Math.max(lo, Number(da.color_temp_kelvin))) : Math.round((lo + hi) / 2);
+        parts.push(["Warmth", `<input class="range warmth" type="range" min="${lo}" max="${hi}" step="50" value="${k}" data-action="kelvin" data-entity="${esc(dimId)}" data-focus="k-${esc(id)}" aria-label="${name} white warmth">`]);
+      }
+      if (want.has("color") && modes.some((m) => COLOR_MODES.includes(m))) {
+        const cur = COLOR_MODES.includes(da.color_mode) && Array.isArray(da.hs_color) ? da.hs_color.map(Number) : null;
+        const isSel = (h, sat) => cur && (sat === 0 ? cur[1] < 12 : cur[1] >= 40 && Math.min(Math.abs(cur[0] - h), 360 - Math.abs(cur[0] - h)) < 18);
+        parts.push(["Colour", `<div class="swatches">${SWATCHES.map(([label, h, sat]) => `<button class="swatch-b" data-action="color" data-entity="${esc(dimId)}" data-h="${h}" data-s="${sat}" data-focus="c-${esc(id)}-${label}" style="--sw:${hsCss(h, sat)}" aria-label="${label}" title="${label}" aria-pressed="${!!isSel(h, sat)}"></button>`).join("")}</div>`]);
+      }
+      if (parts.length) extra = `<div class="extra">${parts.map(([label, html]) => parts.length > 1 ? `<div class="ctl"><span class="ctl-l">${label}</span>${html}</div>` : html).join("")}</div>`;
     }
     if (d === "fan" && (Number(a.supported_features) & 1)) {
       const p = on ? Number(a.percentage ?? 100) : 0;
@@ -447,6 +470,9 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (action === "toggle") {
       if (d === "media_player") this._call(id, d, isOn(s) ? "turn_off" : "turn_on");
       else this._call(id, d, isOn(s) ? "turn_off" : "turn_on");
+    } else if (action === "color") {
+      if (d !== "light") return;
+      this._call(id, "light", "turn_on", { hs_color: [Number(b.dataset.h), Number(b.dataset.s)] });
     } else if (action === "fan") {
       const v = Number(b.dataset.value);
       v ? this._call(id, "fan", "set_percentage", { percentage: v }) : this._call(id, "fan", "turn_off");
@@ -476,6 +502,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     this._dragging = false;
     const id = i.dataset.entity; if (!this._allowed(id)) return;
     if (i.dataset.action === "brightness") this._call(id, "light", "turn_on", { brightness_pct: Number(i.value) });
+    if (i.dataset.action === "kelvin") this._call(id, "light", "turn_on", { color_temp_kelvin: Number(i.value) });
     if (i.dataset.action === "volume") {
       const cap = Math.min(1, Number(this._config.max_volume ?? (this._config.guest_mode !== false ? 0.6 : 1)));
       this._call(id, "media_player", "volume_set", { volume_level: Math.min(cap, Number(i.value)) });

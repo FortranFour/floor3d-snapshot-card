@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0 — 2026-10-23
+
+- **White warmth and colour.** A light that is on (or the dimmer behind a switch) can show a warmth slider (`color_temp_kelvin`, within the bulb's range) and nine colour swatches (`hs_color`, with the current colour ringed), each only when the bulb supports it. With more than one control, each gets a small label.
+- **Choose what shows.** *Display → Light controls* has card-wide switches: `brightness_slider`, `white_slider` (both on by default) and `color_swatches` (off by default in guest mode). Per tile, `controls: [brightness, white, color]`, set from *Light controls on this tile*, overrides them; `[]` leaves on/off only.
+
 ## 0.7.0 — 2026-10-23
 
 - **Dimmers for switched bulbs.** A room entity can name a `dimmer`, the light behind a wall switch. The tile switches the switch, and while it's on, it shows the bulb's brightness (`On · 80%`) and a slider that sets it. The editor has a *Dimmer* field under each switch. Detecting rooms and *Find floor3d cards* fill it from the floor3d card's `color_entity`, and existing rooms pick it up too.

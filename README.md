@@ -60,6 +60,15 @@ Each theme recolours surfaces per pixel, so textures still show as pattern. Wall
 
 A wall switch that powers a smart bulb has its on/off on one entity (`switch.…`) and its brightness on another (`light.…`). Give the room entry a `dimmer`: the tile still switches the switch, and while it's on, it shows the bulb's brightness and a slider that sets it. The editor shows a *Dimmer* field under every switch, and fills it automatically from the floor3d card's `color_entity` (floor3dx-card's link from a switch to the bulb behind it) when you detect rooms or run *Find floor3d cards*.
 
+## Light controls
+
+A light that is on can show up to three controls: a **brightness** slider, a **white warmth** slider (bulbs with colour temperature), and a row of **colour swatches** (colour bulbs; the current colour is ringed). Each appears only when the bulb supports it. *Display → Light controls* switches each one on or off for the whole card; colour swatches are off by default while guest mode is on. A single tile can override that with *Light controls on this tile* in the room editor:
+
+```yaml
+- entity: light.living_room_lamp
+  controls: [brightness, white]   # [] for on/off only; omit to follow the card
+```
+
 ## Text and picture panels
 
 A floor3d card often shows sensor values and pictures on flat panels in the model (`type3d: text` and `type3d: image`). In a static snapshot those are blank frames, so the card hides them: *Find floor3d cards* records, per model, the objects the card binds as text or pictures, and the render hides each one (resolved as floor3d does, by the first object of that name) together with unused spares beside it, i.e. flat objects of the same size and name family, such as the empty slots in a stack of label frames. Untick *Hide the floor3d card's text and picture panels* in the Snapshot section to keep them. *Hide objects matching* (Advanced) still hides anything else by name, in every model.
@@ -153,6 +162,9 @@ sun:
   compass: true            # north arrow on the map
   # latitude: 47.6         # optional; defaults to Home Assistant's location
   # longitude: -122.3
+brightness_slider: true    # light controls on tiles (default on)
+white_slider: true
+color_swatches: false      # default: off in guest mode, on otherwise
 guest_mode: true
 max_volume: 0.6
 temperature_range: [64, 78]
@@ -168,8 +180,8 @@ snapshot:                  # written by the editor's Render button
 
 | Domain | Control |
 |---|---|
-| `light` | toggle, brightness slider when on |
-| `switch` with a `dimmer` | toggle; while on, a brightness slider for the light behind it |
+| `light` | toggle; when on, brightness, white warmth and colour, as far as the bulb supports them |
+| `switch` with a `dimmer` | toggle; while on, the same light controls for the bulb behind it |
 | `switch`, `input_boolean`, `remote`, `humidifier` | toggle |
 | `fan` | toggle; Off/Low/Med/High when speeds are supported |
 | `media_player` | power toggle; volume slider (capped in guest mode) |

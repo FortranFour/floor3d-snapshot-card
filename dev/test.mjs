@@ -212,6 +212,30 @@ await page.evaluate((sw) => { const r = window.harness.card.shadowRoot.querySele
 await page.waitForTimeout(200);
 const dimCall = await page.evaluate(() => window.harness.calls.at(-1));
 check(dimCall?.domain === "light" && dimCall.data.entity_id === sw.dimmer && dimCall.data.brightness_pct === 40 && (await page.evaluate(() => window.harness.calls.length)) === nCalls + 1, "the slider sets the bulb's brightness", JSON.stringify(dimCall));
+// 12. warmth slider and colour swatches; card-wide switches; per-tile override
+await page.evaluate((sw) => { const h = window.harness.hass; h.states = { ...h.states, [sw.dimmer]: { entity_id: sw.dimmer, state: "on", attributes: { friendly_name: "Bulb", brightness: 204, supported_color_modes: ["color_temp", "hs"], color_mode: "hs", hs_color: [225, 100], color_temp_kelvin: null, min_color_temp_kelvin: 2200, max_color_temp_kelvin: 6500 } } }; window.harness.push(); }, sw);
+await page.waitForTimeout(250);
+const ctl = () => page.evaluate((sw) => { const t = window.harness.card.shadowRoot.querySelector(`input[data-action="brightness"][data-entity="${sw.dimmer}"]`)?.closest(".tile") || [...window.harness.card.shadowRoot.querySelectorAll(".tile")].find((x) => x.querySelector(`[data-entity="${sw.dimmer}"]`)); return t ? { brightness: !!t.querySelector('[data-action="brightness"]'), warmth: !!t.querySelector('[data-action="kelvin"]'), swatches: t.querySelectorAll('[data-action="color"]').length, selected: t.querySelector('[data-action="color"][aria-pressed="true"]')?.title || "" } : null; }, sw);
+let k = await ctl();
+check(k?.brightness && k.warmth && k.swatches === 0, "guest mode: brightness and warmth, no colour swatches by default", JSON.stringify(k));
+await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); c.color_swatches = true; window.harness.setConfig(c); });
+await page.waitForTimeout(250); k = await ctl();
+check(k?.swatches === 9 && k.selected === "Blue", "colour swatches when switched on, current colour marked", JSON.stringify(k));
+await page.evaluate((sw) => window.harness.card.shadowRoot.querySelector(`[data-action="kelvin"][data-entity="${sw.dimmer}"]`).closest(".tile").setAttribute("id", "f3s-shot"), sw);
+await page.locator("#card").screenshot({ path: `${shots}/tile-controls.png` }).catch(() => {});
+{ const h = await page.evaluateHandle(() => window.harness.card.shadowRoot.getElementById("f3s-shot")); await h.asElement().screenshot({ path: `${shots}/tile-controls.png` }); }
+await page.evaluate((sw) => { const s = window.harness.card.shadowRoot.querySelector(`[data-action="color"][data-entity="${sw.dimmer}"][title="Red"]`); s.click(); }, sw);
+await page.waitForTimeout(200);
+const colCall = await page.evaluate(() => window.harness.calls.at(-1));
+check(colCall?.data?.entity_id === sw.dimmer && JSON.stringify(colCall.data.hs_color) === "[0,100]", "a swatch sets the bulb's colour", JSON.stringify(colCall));
+await page.evaluate((sw) => { const r = window.harness.card.shadowRoot.querySelector(`[data-action="kelvin"][data-entity="${sw.dimmer}"]`); r.value = "2700"; r.dispatchEvent(new Event("change", { bubbles: true })); }, sw);
+await page.waitForTimeout(200);
+const kCall = await page.evaluate(() => window.harness.calls.at(-1));
+check(kCall?.data?.color_temp_kelvin === 2700, "the warmth slider sets colour temperature", JSON.stringify(kCall));
+await page.evaluate((sw) => { const c = structuredClone(window.harness.getConfig()); for (const r of c.rooms) for (const e of r.entities || []) if (e.dimmer === sw.dimmer) e.controls = ["brightness"]; window.harness.setConfig(c); }, sw);
+await page.waitForTimeout(250); k = await ctl();
+check(k?.brightness && !k.warmth && k.swatches === 0, "a tile's own controls override the card's switches", JSON.stringify(k));
+await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); delete c.color_swatches; window.harness.setConfig(c); });
 // editor screenshot with the first room open (README)
 await page.evaluate(() => { const r = window.harness.editor.shadowRoot; r.querySelector('[data-section="model"]').open = false; r.querySelector('[data-section="rooms"]').open = true; r.querySelector('details.room').open = true; });
 await page.waitForTimeout(200);
