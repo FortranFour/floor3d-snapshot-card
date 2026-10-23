@@ -6,6 +6,7 @@ import { solarPosition, sunVector, northVector, compassName } from "./sun.js";
 import { decodeLight, shade, compose, nextUpdateMinutes, phase } from "./sunlight.js";
 export const VERSION = typeof __VERSION__ !== "undefined" ? __VERSION__ : "dev";
 export const SUN_PREVIEW_EVENT = "floor3d-snapshot-sun-preview";
+const EDIT_ROOM_EVENT = "floor3d-snapshot-edit-room";
 
 const BAD = new Set(["unknown", "unavailable", "none", ""]);
 const available = (s) => !!s && !BAD.has(s.state);
@@ -85,6 +86,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (new Set(ids).size !== ids.length) throw new Error("Room ids must be unique");
     this._config = { guest_mode: true, ...config, rooms };
     if (!ids.includes(this._room)) this._room = ids.includes(config.default_room) ? config.default_room : ids[0];
+    this._followEditor();
     this._mapEl = null; this._index = null; this._tintKey = ""; this._light = null; this._direct = null; this._shadeKey = ""; this._directKey = ""; this._sunKey = "";
     this._entities = new Set(rooms.flatMap((r) => (r.entities || []).flatMap((e) => [e.entity, ...(e.dimmer ? [e.dimmer] : [])])));
     this._request();
@@ -101,7 +103,22 @@ export class Floor3dSnapshotCard extends HTMLElement {
   get hass() { return this._hass; }
   getCardSize() { return 10; }
   getGridOptions() { return { columns: "full", rows: "auto" }; }
+  // In the card editor's preview, show the room being edited, also on a preview card that a host
+  // (a wrapper card, say) builds anew for every change.
+  set preview(v) { this._isPreview = !!v; this._followEditor(); }
+  get preview() { return !!this._isPreview; }
+  _inEditDialog() {
+    for (let n = this; n; n = n.parentNode || n.host) if (n.localName === "hui-dialog-edit-card" || n.localName === "hui-card-preview") return true;
+    return false;
+  }
+  _followEditor() {
+    const id = window.__floor3dSnapshotEditRoom;
+    if (!(this._isPreview || (this.isConnected && this._inEditDialog())) || !id || !this._config?.rooms.some((r) => r.id === id) || id === this._room) return;
+    this._room = id; this._request();
+  }
   connectedCallback() {
+    this._onEditRoom ||= () => this._followEditor();
+    window.addEventListener(EDIT_ROOM_EVENT, this._onEditRoom);
     this._ro?.observe(this); this._layout(); this._request();
     this._onPreview ||= (e) => { this._sunPreview = Number.isFinite(e.detail?.time) ? e.detail.time : null; this._mapEl?.classList.toggle("preview", this._sunPreview !== null); this._updateSun(); };
     this._onVisible ||= () => { if (document.visibilityState === "visible") this._updateSun(); };
@@ -110,7 +127,7 @@ export class Floor3dSnapshotCard extends HTMLElement {
   }
   disconnectedCallback() {
     this._ro?.disconnect(); clearTimeout(this._pt); clearTimeout(this._toastTimer); clearTimeout(this._sunTimer); this._pointer = false;
-    window.removeEventListener(SUN_PREVIEW_EVENT, this._onPreview); document.removeEventListener("visibilitychange", this._onVisible);
+    window.removeEventListener(SUN_PREVIEW_EVENT, this._onPreview); window.removeEventListener(EDIT_ROOM_EVENT, this._onEditRoom); document.removeEventListener("visibilitychange", this._onVisible);
   }
 
   _layout() {

@@ -1,6 +1,12 @@
 // Visual editor for floor3d-snapshot-card. Loaded only when the card editor opens.
 import { solarPosition, compassName } from "./sun.js";
 const SUN_PREVIEW_EVENT = "floor3d-snapshot-sun-preview";
+const EDIT_ROOM_EVENT = "floor3d-snapshot-edit-room";   // the room being edited, for the preview card
+const announceRoom = (id) => {
+  if (window.__floor3dSnapshotEditRoom === id) return;
+  window.__floor3dSnapshotEditRoom = id;
+  window.dispatchEvent(new CustomEvent(EDIT_ROOM_EVENT, { detail: { room: id } }));
+};
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const clone = (v) => JSON.parse(JSON.stringify(v ?? null));
 const slug = (name, taken = new Set()) => {
@@ -65,7 +71,7 @@ class Floor3dSnapshotCardEditor extends HTMLElement {
     this._floor3d = {};      // url -> {entities, groups} from scanned floor3d cards
     this._shadowRootEvents();
   }
-  disconnectedCallback() { this._closePreview(); this._previewOpen = false; if (this._previewTime != null) { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); } }
+  disconnectedCallback() { this._closePreview(); this._previewOpen = false; announceRoom(null); if (this._previewTime != null) { this._previewTime = null; window.dispatchEvent(new CustomEvent(SUN_PREVIEW_EVENT, { detail: { time: null } })); } }
   setConfig(config) {
     this._config = clone(config) || {}; this._config.rooms ||= []; this._config.models ||= [];
     if (!this._adopted) { this._adopted = true; this._adopt(); }
@@ -295,6 +301,7 @@ ${hasLoc ? `<div class="row"><label>Preview today at <b id="sun-when">${esc(when
       const t = e.composedPath?.()[0] || e.target; if (!t?.closest) return;
       const room = t.closest("details.room"), sec = t.closest("details[data-section]");
       this._anchor = room?.dataset.rid ? `details.room[data-rid="${CSS.escape(room.dataset.rid)}"]` : sec ? `details[data-section="${sec.dataset.section}"]` : this._anchor;
+      if (room?.dataset.rid) announceRoom(room.dataset.rid);   // the preview shows the room being edited
     };
     for (const type of ["pointerdown", "focusin", "keydown"]) root.addEventListener(type, mark, true);
     root.addEventListener("click", (e) => { const b = e.target.closest("button[data-act]"); if (b && !b.disabled) this._act(b.dataset.act, b.dataset, b); });

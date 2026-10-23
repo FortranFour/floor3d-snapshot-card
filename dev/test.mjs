@@ -243,6 +243,20 @@ await page.evaluate((sw) => { const c = structuredClone(window.harness.getConfig
 await page.waitForTimeout(250); k = await ctl();
 check(k?.brightness && !k.warmth && k.swatches === 0, "a tile's own controls override the card's switches", JSON.stringify(k));
 await page.evaluate(() => { const c = structuredClone(window.harness.getConfig()); delete c.color_swatches; window.harness.setConfig(c); });
+// 12b. the preview card shows the room being edited, also when the host rebuilds it for every change
+{
+  const pick = await page.evaluate(() => { const c = window.harness.getConfig(); const r = c.rooms[c.rooms.length - 1]; return { id: r.id, i: c.rooms.length - 1 }; });
+  await page.evaluate(() => { window.harness.card.preview = true; });
+  await page.evaluate((p) => { const ed = window.harness.editor; ed._open.rooms = true; ed._roomOpen.add(p.id); ed._render(); }, pick);
+  await page.evaluate((p) => window.harness.editor.shadowRoot.querySelector(`details.room[data-rid="${p.id}"] summary`).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, composed: true })), pick);
+  await page.waitForTimeout(150);
+  const follows = await page.evaluate(() => window.harness.card._room);
+  // a brand-new preview card (as a wrapper builds on every change) starts on the same room
+  const fresh = await page.evaluate(() => { const c = document.createElement("floor3d-snapshot-card"); c.preview = true; c.setConfig(window.harness.getConfig()); return c._room; });
+  const plain = await page.evaluate(() => { const c = document.createElement("floor3d-snapshot-card"); c.setConfig(window.harness.getConfig()); return c._room; });
+  check(follows === pick.id && fresh === pick.id && plain !== pick.id, "the preview shows the room being edited; dashboard cards don't follow", JSON.stringify({ want: pick.id, follows, fresh, plain }));
+  await page.evaluate(() => { window.harness.card.preview = false; });
+}
 // 13. detecting again: missing entities come back, ones removed with ✕ stay out until restored
 {
   const r0 = await page.evaluate(() => { const c = window.harness.getConfig(); const i = c.rooms.findIndex((r) => (r.entities || []).length >= 2 && r.floors?.length); return { i, a: c.rooms[i].entities[0].entity, b: c.rooms[i].entities[1].entity, id: c.rooms[i].id }; });

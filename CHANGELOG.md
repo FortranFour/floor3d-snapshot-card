@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.5 — 2026-10-23
+
+- The editor's preview shows the room being edited. Working in a room (clicking, typing or opening it) selects that room in the preview card. A host that builds a new preview card for every change, such as a wrapper card, starts the new card on that room too, instead of on the first room, which made the preview jump back to the first room after each edit. Only preview cards follow (those marked `preview`, or inside the card-edit dialog); cards on the dashboard don't.
+
 ## 0.8.4 — 2026-10-23
 
 - Editor: the room being edited stays open and in place also where the host builds a new editor for every change, as a wrapper card may. 0.8.3 only covered an editor that survives the change. The editor now hands its view state to its replacement: open sections and rooms, the room being edited and its place on screen, the open 3D preview, the loaded model and the floor3d lookups. The model isn't reloaded either.
