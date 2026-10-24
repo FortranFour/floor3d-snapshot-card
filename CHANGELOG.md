@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.1 — 2026-10-23
+
+- Tile names wrap only between words ("Garage Thermostat" no longer breaks as "Thermosta / t"). Narrow tiles use slightly tighter spacing so long words fit.
+
 ## 0.12.0 — 2026-10-23
 
 - **Thermostats.** An on/off switch on the tile (`climate.turn_on`/`turn_off`, or the last mode through `set_hvac_mode` when the thermostat lacks them). In Heat/Cool the tile shows *Heat to* and *Cool to* and sets `target_temp_low`/`target_temp_high` (an ecobee in Heat/Cool couldn't be set before), keeping them apart. Mode buttons with guest mode off. New `guest_thermostat` (`setpoint_power` default, `setpoint`, `full`, `view`) sets what guests may do; `temperature_range` now limits guests only, and the thermostat's own min/max apply otherwise.
