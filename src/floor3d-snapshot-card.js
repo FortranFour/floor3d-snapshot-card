@@ -340,7 +340,11 @@ export class Floor3dSnapshotCard extends HTMLElement {
       }
       if (want.has("color") && modes.some((m) => COLOR_MODES.includes(m))) {
         const cur = COLOR_MODES.includes(da.color_mode) && Array.isArray(da.hs_color) ? da.hs_color.map(Number) : null;
-        const isSel = (h, sat) => cur && (sat === 0 ? cur[1] < 12 : cur[1] >= 25 && Math.min(Math.abs(cur[0] - h), 360 - Math.abs(cur[0] - h)) < 22);
+        // One swatch at most: the nearest hue. Orange and yellow are 22° apart, and a bulb reports
+        // back a hue a few degrees off the one it was sent, which used to mark both.
+        const hueGap = (h) => Math.min(Math.abs(cur[0] - h), 360 - Math.abs(cur[0] - h));
+        const near = cur && cur[1] >= 25 ? WHEEL.reduce((best, s) => (hueGap(s[1]) < hueGap(best[1]) ? s : best)) : null;
+        const isSel = (h, sat) => cur && (sat === 0 ? cur[1] < 12 : !!near && near[1] === h && hueGap(h) < 22);
         const btn = ([label, h, sat], x, y) => `<button class="swatch-b" data-action="color" data-entity="${esc(dimId)}" data-h="${h}" data-s="${sat}" data-focus="c-${esc(id)}-${label}" style="--sw:${hsCss(h, sat)};left:${x}%;top:${y}%" aria-label="${label}" title="${label}" aria-pressed="${!!isSel(h, sat)}"></button>`;
         parts.push(["Color", `<div class="wheel" role="group" aria-label="${name} color">${btn(WHEEL_WHITE, 50, 50)}${WHEEL.map((s, n) => { const a = (n * 45 - 90) * Math.PI / 180; return btn(s, 50 + 34 * Math.cos(a), 50 + 34 * Math.sin(a)); }).join("")}</div>`]);
       }

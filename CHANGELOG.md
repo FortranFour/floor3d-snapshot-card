@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1 — 2026-11-09
+
+- Color swatches: only one is ever marked as the current color. Tapping Yellow could mark Orange as well (and Orange, Red): the two hues are 22° apart, a bulb reports back a hue a few degrees off the one it was sent, and each swatch on its own counted anything within 22° as a match. The card now marks the nearest swatch only. This was display only; the bulb was always sent the one color tapped.
+
 ## 0.13.0 — 2026-11-09
 
 - **Height.** New `height` (*Display → Height*): a CSS length such as `100dvh`, or a number of pixels. The card is exactly that tall, for a full-screen **Panel** view on a wall tablet. With the map beside the controls, the map fits the space under the title and a long room scrolls inside its panel; with the map above the controls, both scroll inside the card. `dvh` falls back to `vh` in browsers without it. Without `height`, nothing changes.

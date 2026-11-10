@@ -264,6 +264,7 @@ node dev/make-demo.mjs   # regenerate the demo home model
 node dev/test.mjs --demo # headless end-to-end test (editor → render → card → sunlight)
 node dev/edges-test.mjs  # edge-line rules on a hand-built scene (no browser)
 node dev/height-test.mjs # the `height` option at tablet and phone sizes
+node dev/color-test.mjs  # one color swatch marked, at every hue
 node dev/style-test.mjs --demo  # each style rendered and screenshotted
 node dev/sun-test.mjs --demo --lat 47.6 --lon -122.3 --tz America/Los_Angeles   # screenshots through a day
 node dev/server.mjs      # then open http://127.0.0.1:8123/?fixture=demo
