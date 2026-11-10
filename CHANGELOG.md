@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.0 — 2026-11-09
+
+- **Height.** New `height` (*Display → Height*): a CSS length such as `100dvh`, or a number of pixels. The card is exactly that tall, for a full-screen **Panel** view on a wall tablet. With the map beside the controls, the map fits the space under the title and a long room scrolls inside its panel; with the map above the controls, both scroll inside the card. `dvh` falls back to `vh` in browsers without it. Without `height`, nothing changes.
+- This replaces sizing the card with card-mod or UIX styles, which could be missed on a first, uncached load when the add-on finished loading after the card had drawn (most easily with the card inside a wrapper card); the card was then content-sized until a reload. `height` was accepted in YAML before but had no effect.
+
 ## 0.12.1 — 2026-10-23
 
 - Tile names wrap only between words ("Garage Thermostat" no longer breaks as "Thermosta / t"). Narrow tiles use slightly tighter spacing so long words fit.

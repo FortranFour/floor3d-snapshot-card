@@ -36,9 +36,22 @@ Add a card → **Floor3D Snapshot**, then work down the editor:
 2. **Rooms** — *Detect rooms from the model* (run it again any time: it adds newly detected entities to your rooms and keeps your edits, and entities you removed stay out until you press *Restore*) finds the floor objects (`room_N_1`, as Sweet Home 3D exports them), names each room from the floor3d entity bound to that floor (e.g. `input_button.floor3d_kitchen` → *Kitchen*), and assigns the floor3d card's entities to the room they stand in. Tick *Also add sensors* first if you want temperatures, doors and windows too. Then rename rooms, change icons, add or remove entities, set labels, reorder. Rooms without a floor object (a porch, or a group like *Outdoor Lighting*) show as a pin on an anchor object; the editor suggests anchors from the floor3d objects bound to the room's entities. A room with neither appears as a button under the map.
 3. **Snapshot** — pick a style, set the view (open *Show 3D preview* and drag, or use the Turn / Tilt / Roll sliders), then *Render snapshot*. Rendering runs in your browser (a few seconds to ~20 s for a large house) and the two images are saved in Home Assistant's image store. If you later change rooms, models or the view, the editor marks the snapshot *Out of date*.
 4. **Sunlight** — optional; see below.
-5. **Display** — title, starting room, layout, guest-mode limits, and optionally the indoor temperature, the weather and the date and time beside the title. On a phone they wrap onto their own row under the title.
+5. **Display** — title, starting room, layout, height, guest-mode limits, and optionally the indoor temperature, the weather and the date and time beside the title. On a phone they wrap onto their own row under the title.
 
 > Rendering needs WebGL in the browser you edit from (any desktop browser). Guests never need it.
+
+## Filling the screen
+
+On a wall tablet the card can be the whole page: put it alone in a **Panel** view and set `height` (*Display → Height*).
+
+```yaml
+height: 100dvh                                    # header hidden (kiosk mode)
+# height: calc(100dvh - var(--header-height))     # header shown
+```
+
+The card is then exactly that tall. With the map beside the controls, the map fits the space under the title and a long room scrolls inside its panel; with the map above the controls (a phone), the two scroll together inside the card. `height` takes any CSS length, or a number of pixels. `dvh` falls back to `vh` in browsers without it. Without `height`, the card is as tall as its content, as before.
+
+The card sizes itself, so this needs no styling add-on (card-mod, UIX) and is in place from the first frame. Sizing the card from such an add-on instead can fail on a first, uncached load: the add-on styles a card inside a wrapper card only when the card first draws, and misses it if it finishes loading after that.
 
 ## Styles
 
@@ -160,6 +173,7 @@ rooms:
 default_room: kitchen
 layout: auto               # auto | side | stacked
 room_list: ""              # "" (rooms the map can't show) | always | never
+height: 100dvh             # optional; a CSS length (or a number of pixels). See "Filling the screen"
 indoor_entity: sensor.hall_temperature   # or a climate entity (its current temperature)
 weather_entity: weather.home
 clock: true                # date and time beside the title
@@ -249,6 +263,7 @@ npm run build            # dist/ (every file is a release asset)
 node dev/make-demo.mjs   # regenerate the demo home model
 node dev/test.mjs --demo # headless end-to-end test (editor → render → card → sunlight)
 node dev/edges-test.mjs  # edge-line rules on a hand-built scene (no browser)
+node dev/height-test.mjs # the `height` option at tablet and phone sizes
 node dev/style-test.mjs --demo  # each style rendered and screenshotted
 node dev/sun-test.mjs --demo --lat 47.6 --lon -122.3 --tz America/Los_Angeles   # screenshots through a day
 node dev/server.mjs      # then open http://127.0.0.1:8123/?fixture=demo

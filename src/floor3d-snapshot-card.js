@@ -46,6 +46,9 @@ ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
 :host(.narrow) .status{flex:1 1 100%;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px}:host(.narrow) .schips{justify-content:flex-start}:host(.narrow) .when{flex:1 1 100%}.head h2{margin:0;font-size:20px;font-weight:500;letter-spacing:-.3px}.head p{margin:2px 0 0;color:var(--f3s-muted);font-size:13px}
 .layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:16px;align-items:start}:host(.stacked) .layout{grid-template-columns:minmax(0,1fr)}.layout>*{min-width:0}
 .map{position:relative;width:min(100%,calc((100vh - 260px) * var(--aspect,1.2)));min-width:min(100%,280px);margin:0 auto;aspect-ratio:var(--aspect,1.2);-webkit-user-select:none;user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:default}.map.hovering{cursor:pointer}
+:host(.fill){height:var(--f3s-height);min-height:0}:host(.fill) ha-card{height:100%;display:flex;flex-direction:column}:host(.fill) .head{flex:none}:host(.fill) .layout{flex:1 1 auto;min-height:0;grid-template-rows:minmax(0,1fr)}:host(.fill.stacked) .layout{grid-template-rows:none;align-content:start;overflow-y:auto}
+:host(.fill:not(.stacked)) .mapcol{display:flex;flex-direction:column;height:100%;min-height:0}:host(.fill:not(.stacked)) .map-slot{flex:1 1 auto;min-height:0;display:grid;place-items:center}:host(.fill:not(.stacked)) .legend,:host(.fill:not(.stacked)) .chips{flex:none}:host(.fill:not(.stacked)) .panel{max-height:100%;overflow-y:auto}
+@supports (width:1cqw){:host(.fill:not(.stacked)) .map-slot{container-type:size}:host(.fill:not(.stacked)) .map{width:min(100cqw,calc(100cqh * var(--aspect,1.2)));min-width:0}}
 .map{isolation:isolate}.map img,.map canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}.map img,.map canvas.sun{-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}.map canvas.sun{mix-blend-mode:multiply;opacity:0;transition:opacity 2.4s ease}.map canvas.sun.show{opacity:1}.map.preview canvas.sun{transition-duration:.2s}
 .compass{position:absolute;left:4px;bottom:4px;width:30px;height:30px;border-radius:50%;border:1px solid var(--f3s-line);background:var(--f3s-surface);color:var(--f3s-muted);display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}.compass svg{width:24px;height:24px;transform:rotate(var(--north,0deg))}:host(.dark) .map:not(.staged) img{filter:brightness(.8) contrast(1.05)}.map.staged{border-radius:14px;background:var(--f3s-stage)}
 .pins{position:absolute;inset:0}.pin{position:absolute;transform:translate(-15px,-50%);display:flex;align-items:center;gap:5px;height:30px;min-width:30px;padding:0 5px;border-radius:15px;border:1px solid var(--f3s-line);background:var(--f3s-surface);color:var(--f3s-muted);box-shadow:0 1px 4px rgba(0,0,0,.12);font-size:12px;font-weight:500;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s ease}.pin:before{content:"";position:absolute;inset:-8px}.pin ha-icon{width:18px;height:18px}.pin-name{display:none;padding-right:3px}.pin.on{color:var(--f3s-amber);border-color:rgba(223,172,42,.55)}.pin[aria-pressed=true]{background:var(--f3s-blue);border-color:var(--f3s-blue);color:#fff;z-index:2}.pin-count{position:absolute;top:-6px;right:-6px;min-width:16px;height:16px;border-radius:8px;background:var(--f3s-amber);color:#fff;font-size:10px;line-height:16px;text-align:center;padding:0 4px;font-weight:600}
@@ -60,6 +63,17 @@ ha-card{padding:16px;color:var(--f3s-ink);overflow:hidden}
 .empty{padding:20px;text-align:center;color:var(--f3s-muted);font-size:14px;line-height:1.6;border:1px dashed var(--f3s-line);border-radius:14px}.toast{position:fixed;z-index:10;bottom:24px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 32px);border:1px solid var(--f3s-line);border-radius:14px;background:var(--f3s-surface);padding:12px 16px;box-shadow:0 4px 18px rgba(0,0,0,.12);font-size:13px}
 @media(max-width:600px){.pin{height:26px;min-width:26px;padding:0 4px;transform:translate(-13px,-50%);font-size:11px}.pin ha-icon{width:16px;height:16px}.pin:before{inset:-9px}}
 `;
+/** The card's `height` as CSS: a number is pixels, a string any CSS length ("100dvh",
+ *  "calc(100vh - 56px)"). Dynamic viewport units fall back to vh where the browser lacks them. */
+const cssHeight = (v) => {
+  if (typeof v === "number") return v > 0 ? `${v}px` : "";
+  if (typeof v !== "string" || !(v = v.trim())) return "";
+  if (/^\d+(\.\d+)?$/.test(v)) return `${v}px`;
+  const ok = (x) => { try { return CSS.supports("height", x); } catch { return false; } };
+  if (ok(v)) return v;
+  const old = v.replace(/(\d)[dsl]vh\b/g, "$1vh");
+  return old !== v && ok(old) ? old : "";
+};
 let SHEET = null;
 const adoptStyle = (root) => {
   try { if (!SHEET) { SHEET = new CSSStyleSheet(); SHEET.replaceSync(STYLE); } root.adoptedStyleSheets = [SHEET]; }
@@ -101,6 +115,11 @@ export class Floor3dSnapshotCard extends HTMLElement {
     if (new Set(ids).size !== ids.length) throw new Error("Room ids must be unique");
     this._config = { guest_mode: true, ...config, rooms };
     if (!ids.includes(this._room)) this._room = ids.includes(config.default_room) ? config.default_room : ids[0];
+    // A set height (say 100dvh for a full-screen panel view) is the card's own: the map fits what
+    // is left under the title and the controls scroll inside, with no styling add-on involved.
+    const height = cssHeight(config.height);
+    this.classList.toggle("fill", !!height);
+    if (height) this.style.setProperty("--f3s-height", height); else this.style.removeProperty("--f3s-height");
     this._followEditor();
     this._mapEl = null; this._index = null; this._tintKey = ""; this._light = null; this._direct = null; this._shadeKey = ""; this._directKey = ""; this._sunKey = "";
     this._allowAll();
